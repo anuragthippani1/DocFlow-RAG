@@ -1,4 +1,4 @@
-<img width="1024" height="1024" alt="RAG" src="https://github.com/user-attachments/assets/9a1d375b-1286-4ae2-901c-238a11ad8aab" />
+<img width="100" height="104" alt="RAG" src="https://github.com/user-attachments/assets/9a1d375b-1286-4ae2-901c-238a11ad8aab" />
 
 # 🚀 DocFlow RAG System
 
