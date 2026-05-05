@@ -1,3 +1,5 @@
+<img width="1024" height="1024" alt="RAG" src="https://github.com/user-attachments/assets/9a1d375b-1286-4ae2-901c-238a11ad8aab" />
+
 # 🚀 DocFlow RAG System
 
 An Agentic Retrieval-Augmented Generation (RAG) System that allows users to upload documents, query them, and receive not just answers—but structured insights including risk levels and recommendations.
