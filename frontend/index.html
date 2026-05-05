@@ -53,6 +53,12 @@
         letter-spacing: 0.2px;
       }
 
+      .tagline {
+        margin: 0;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.82);
+      }
+
       .subtitle {
         margin: 0;
         color: var(--muted);
@@ -238,12 +244,53 @@
         color: rgba(255, 255, 255, 0.86);
         background: rgba(0, 0, 0, 0.18);
       }
+
+      .risk {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-weight: 750;
+        letter-spacing: 0.3px;
+        border: 1px solid transparent;
+        width: fit-content;
+      }
+
+      .risk.low {
+        color: rgba(87, 242, 135, 0.98);
+        border-color: rgba(87, 242, 135, 0.45);
+        background: rgba(87, 242, 135, 0.12);
+      }
+
+      .risk.medium {
+        color: rgba(255, 214, 102, 0.98);
+        border-color: rgba(255, 214, 102, 0.45);
+        background: rgba(255, 214, 102, 0.12);
+      }
+
+      .risk.high {
+        color: rgba(255, 107, 107, 0.98);
+        border-color: rgba(255, 107, 107, 0.45);
+        background: rgba(255, 107, 107, 0.12);
+      }
+
+      .source-link {
+        color: rgba(110, 231, 255, 0.95);
+        text-decoration: none;
+        border-bottom: 1px dotted rgba(110, 231, 255, 0.5);
+        padding-bottom: 1px;
+      }
+
+      .source-link:hover {
+        border-bottom-style: solid;
+      }
     </style>
   </head>
   <body>
     <div class="container">
       <header>
         <h1>DocFlow RAG System</h1>
+        <p class="tagline">Agentic RAG System for Intelligent Document Analysis</p>
         <p class="subtitle">
           Upload PDFs to build the vector database, then ask questions. The response includes the
           original answer, an agent analysis layer, and the top sources.
@@ -300,7 +347,9 @@
 
         <section class="panel" style="grid-column: 1 / -1">
           <h3>Sources</h3>
-          <ul id="sourcesList"></ul>
+          <ul id="sourcesList">
+            <li>No sources yet.</li>
+          </ul>
         </section>
       </div>
     </div>
@@ -344,21 +393,41 @@
         $("answerText").textContent = answer || "No answer returned.";
         $("analysisSummary").textContent = analysis.summary || "";
         $("analysisInsight").textContent = analysis.key_insight || "";
-        $("analysisRisk").textContent = analysis.risk_level || "";
+        const riskRaw = String(analysis.risk_level || "").trim();
+        const risk = riskRaw ? riskRaw[0].toUpperCase() + riskRaw.slice(1).toLowerCase() : "";
+        const riskClass =
+          risk.toLowerCase() === "high" ? "high" : risk.toLowerCase() === "medium" ? "medium" : "low";
+        $("analysisRisk").innerHTML = risk
+          ? `<span class="risk ${riskClass}">${risk}</span>`
+          : "";
         $("analysisRec").textContent = analysis.recommendation || "";
 
         const ul = $("sourcesList");
         ul.innerHTML = "";
-        if (!sources.length) {
+        const uniqueSources = Array.from(new Set(sources.filter(Boolean)));
+        if (!uniqueSources.length) {
           const li = document.createElement("li");
           li.textContent = "No sources returned.";
           ul.appendChild(li);
           return;
         }
 
-        for (const src of sources) {
+        for (const src of uniqueSources) {
           const li = document.createElement("li");
-          li.textContent = src;
+          const a = document.createElement("a");
+          a.href = "#";
+          a.className = "source-link";
+          a.textContent = src;
+          a.addEventListener("click", async (ev) => {
+            ev.preventDefault();
+            try {
+              await navigator.clipboard.writeText(src);
+              setStatus($("queryStatus"), `Copied source: ${src}`, "ok");
+            } catch {
+              setStatus($("queryStatus"), `Source: ${src}`, "ok");
+            }
+          });
+          li.appendChild(a);
           ul.appendChild(li);
         }
       }
