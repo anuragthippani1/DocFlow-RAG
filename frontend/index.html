@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DocFlow RAG System</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --card: rgba(255, 255, 255, 0.06);
+        --card2: rgba(255, 255, 255, 0.08);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.72);
+        --border: rgba(255, 255, 255, 0.14);
+        --accent: #6ee7ff;
+        --danger: #ff6b6b;
+        --ok: #57f287;
+        --shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color: var(--text);
+        background: radial-gradient(1200px 600px at 30% 0%, rgba(110, 231, 255, 0.14), transparent),
+          radial-gradient(900px 450px at 80% 30%, rgba(87, 242, 135, 0.12), transparent),
+          var(--bg);
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 32px 16px 60px;
+      }
+
+      header {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: 0.2px;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      @media (min-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(10px);
+      }
+
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        font-weight: 650;
+      }
+
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      label {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      input[type="file"] {
+        width: 100%;
+        padding: 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.22);
+        color: var(--text);
+      }
+
+      input[type="text"] {
+        flex: 1;
+        min-width: 220px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.22);
+        color: var(--text);
+        outline: none;
+      }
+
+      input[type="text"]::placeholder {
+        color: rgba(255, 255, 255, 0.5);
+      }
+
+      button {
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(110, 231, 255, 0.35);
+        background: linear-gradient(180deg, rgba(110, 231, 255, 0.18), rgba(110, 231, 255, 0.08));
+        color: var(--text);
+        cursor: pointer;
+        font-weight: 650;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
+      .status {
+        margin-top: 10px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .status.ok {
+        color: rgba(87, 242, 135, 0.95);
+      }
+
+      .status.err {
+        color: rgba(255, 107, 107, 0.95);
+      }
+
+      .output {
+        margin-top: 14px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      @media (min-width: 900px) {
+        .output {
+          grid-template-columns: 1.2fr 0.8fr;
+        }
+      }
+
+      .panel {
+        background: var(--card2);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 14px;
+      }
+
+      .panel h3 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        font-weight: 650;
+      }
+
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+      }
+
+      .text {
+        white-space: pre-wrap;
+        line-height: 1.55;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 14px;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 8px 10px;
+        align-items: start;
+        font-size: 13px;
+      }
+
+      .kv .k {
+        color: var(--muted);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border);
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.86);
+        background: rgba(0, 0, 0, 0.18);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>DocFlow RAG System</h1>
+        <p class="subtitle">
+          Upload PDFs to build the vector database, then ask questions. The response includes the
+          original answer, an agent analysis layer, and the top sources.
+        </p>
+      </header>
+
+      <div class="grid">
+        <section class="card" aria-label="Upload PDF">
+          <h2>Upload PDF</h2>
+          <div class="row">
+            <input id="pdfFile" type="file" accept="application/pdf" />
+            <button id="uploadBtn">Upload</button>
+          </div>
+          <div id="uploadStatus" class="status" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="card" aria-label="Ask a question">
+          <h2>Ask a question</h2>
+          <div class="row">
+            <input
+              id="questionInput"
+              type="text"
+              placeholder="e.g., What are long-horizon tasks?"
+              autocomplete="off"
+            />
+            <button id="askBtn">Submit</button>
+          </div>
+          <div class="row" style="margin-top: 10px">
+            <span class="pill mono" id="apiBasePill"></span>
+          </div>
+          <div id="queryStatus" class="status" role="status" aria-live="polite"></div>
+        </section>
+      </div>
+
+      <div class="output" aria-label="Response output">
+        <section class="panel">
+          <h3>Answer</h3>
+          <div id="answerText" class="text">Ask a question to see an answer here.</div>
+        </section>
+
+        <section class="panel">
+          <h3>Agent Analysis</h3>
+          <div class="kv">
+            <div class="k">Summary</div>
+            <div id="analysisSummary" class="text"></div>
+            <div class="k">Key insight</div>
+            <div id="analysisInsight" class="text"></div>
+            <div class="k">Risk level</div>
+            <div id="analysisRisk" class="text"></div>
+            <div class="k">Recommendation</div>
+            <div id="analysisRec" class="text"></div>
+          </div>
+        </section>
+
+        <section class="panel" style="grid-column: 1 / -1">
+          <h3>Sources</h3>
+          <ul id="sourcesList"></ul>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const API_BASE = "http://127.0.0.1:8000";
+
+      const $ = (id) => document.getElementById(id);
+
+      function setStatus(el, message, kind) {
+        el.classList.remove("ok", "err");
+        if (kind) el.classList.add(kind);
+        el.textContent = message || "";
+      }
+
+      async function safeJson(res) {
+        const text = await res.text();
+        if (!text) return null;
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { raw: text };
+        }
+      }
+
+      function setLoading(button, isLoading, label) {
+        button.disabled = isLoading;
+        button.textContent = isLoading ? "Working..." : label;
+      }
+
+      function renderResult(payload) {
+        const answer = payload?.answer ?? "";
+        const analysis = payload?.analysis ?? {};
+        const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+
+        $("answerText").textContent = answer || "No answer returned.";
+        $("analysisSummary").textContent = analysis.summary || "";
+        $("analysisInsight").textContent = analysis.key_insight || "";
+        $("analysisRisk").textContent = analysis.risk_level || "";
+        $("analysisRec").textContent = analysis.recommendation || "";
+
+        const ul = $("sourcesList");
+        ul.innerHTML = "";
+        if (!sources.length) {
+          const li = document.createElement("li");
+          li.textContent = "No sources returned.";
+          ul.appendChild(li);
+          return;
+        }
+
+        for (const src of sources) {
+          const li = document.createElement("li");
+          li.textContent = src;
+          ul.appendChild(li);
+        }
+      }
+
+      async function uploadPdf() {
+        const file = $("pdfFile").files?.[0];
+        const status = $("uploadStatus");
+        const btn = $("uploadBtn");
+
+        if (!file) {
+          setStatus(status, "Please choose a PDF file first.", "err");
+          return;
+        }
+        if (!file.name.toLowerCase().endsWith(".pdf")) {
+          setStatus(status, "Only PDF uploads are supported.", "err");
+          return;
+        }
+
+        setLoading(btn, true, "Upload");
+        setStatus(status, "", null);
+
+        try {
+          const form = new FormData();
+          form.append("file", file);
+
+          const res = await fetch(`${API_BASE}/upload`, {
+            method: "POST",
+            body: form,
+          });
+
+          const data = await safeJson(res);
+          if (!res.ok) {
+            const detail = data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data);
+            throw new Error(detail || `Upload failed (${res.status})`);
+          }
+
+          setStatus(status, data?.message || "Upload successful.", "ok");
+        } catch (e) {
+          setStatus(status, `Upload error: ${e?.message || e}`, "err");
+        } finally {
+          setLoading(btn, false, "Upload");
+        }
+      }
+
+      async function askQuestion() {
+        const q = $("questionInput").value.trim();
+        const status = $("queryStatus");
+        const btn = $("askBtn");
+
+        if (!q) {
+          setStatus(status, "Please type a question.", "err");
+          return;
+        }
+
+        setLoading(btn, true, "Submit");
+        setStatus(status, "", null);
+
+        try {
+          const res = await fetch(`${API_BASE}/query`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question: q }),
+          });
+
+          const data = await safeJson(res);
+          if (!res.ok) {
+            const detail = data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data);
+            throw new Error(detail || `Query failed (${res.status})`);
+          }
+
+          renderResult(data);
+          setStatus(status, "Done.", "ok");
+        } catch (e) {
+          setStatus(status, `Query error: ${e?.message || e}`, "err");
+        } finally {
+          setLoading(btn, false, "Submit");
+        }
+      }
+
+      $("apiBasePill").textContent = `API: ${API_BASE}`;
+
+      $("uploadBtn").addEventListener("click", uploadPdf);
+      $("askBtn").addEventListener("click", askQuestion);
+      $("questionInput").addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") askQuestion();
+      });
+    </script>
+  </body>
+</html>
