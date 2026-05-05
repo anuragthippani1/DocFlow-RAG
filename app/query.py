@@ -76,12 +76,20 @@ def main() -> None:
             print("\nAnswer:\n" + str(answer).strip())
 
             source_docs = result.get("source_documents") or []
-            top_sources = [
-                doc.metadata.get("source", "Unknown") for doc in source_docs[:2]
-            ]
-            if top_sources:
+            unique_sources: list[str] = []
+            seen_sources: set[str] = set()
+            for doc in source_docs:
+                src = doc.metadata.get("source", "Unknown")
+                if src in seen_sources:
+                    continue
+                seen_sources.add(src)
+                unique_sources.append(src)
+                if len(unique_sources) >= 2:
+                    break
+
+            if unique_sources:
                 print("\nSources:")
-                for src in top_sources:
+                for src in unique_sources:
                     print(f"- {src}")
         except Exception as e:
             print(f"\nError: {e}")
