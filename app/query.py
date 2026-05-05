@@ -1,9 +1,15 @@
 import os
+import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_classic.chains import RetrievalQA
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
+
+# Allow running as a script: `python app/query.py`
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.agent import analyze_response
 
