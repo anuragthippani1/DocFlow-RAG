@@ -53,6 +53,25 @@ def build_qa_chain() -> RetrievalQA:
     )
 
 
+def _format_answer(text: str) -> str:
+    cleaned = " ".join(text.strip().split())
+    if not cleaned:
+        return ""
+
+    # Prefer bullet points when there's clear structure.
+    raw_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(raw_lines) >= 2:
+        return "\n".join(f"- {line.lstrip('-•').strip()}" for line in raw_lines)
+
+    # Otherwise, bullet simple sentence splits when it reads better.
+    sentences = [s.strip() for s in cleaned.split(". ") if s.strip()]
+    if len(sentences) >= 2:
+        normalized = [s if s.endswith(".") else f"{s}." for s in sentences]
+        return "\n".join(f"- {s}" for s in normalized)
+
+    return cleaned
+
+
 def main() -> None:
     qa = build_qa_chain()
 
@@ -72,8 +91,10 @@ def main() -> None:
 
         try:
             result = qa.invoke({"query": question})
-            answer = result.get("result", result)
-            print("\nAnswer:\n" + str(answer).strip())
+            answer_text = str(result.get("result", result)).strip()
+            formatted = _format_answer(answer_text)
+            print("\nAnswer:")
+            print(formatted if formatted else "No answer returned.")
 
             source_docs = result.get("source_documents") or []
             unique_sources: list[str] = []
@@ -89,8 +110,7 @@ def main() -> None:
 
             if unique_sources:
                 print("\nSources:")
-                for src in unique_sources:
-                    print(f"- {src}")
+                print("\n".join(f"- {src}" for src in unique_sources))
         except Exception as e:
             print(f"\nError: {e}")
 
