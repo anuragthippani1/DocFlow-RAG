@@ -5,6 +5,8 @@ from langchain_classic.chains import RetrievalQA
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 
+from app.agent import analyze_response
+
 
 load_dotenv()
 
@@ -91,10 +93,18 @@ def main() -> None:
 
         try:
             result = qa.invoke({"query": question})
-            answer_text = str(result.get("result", result)).strip()
+            answer = str(result["result"]).strip()
+            answer_text = answer
             formatted = _format_answer(answer_text)
             print("\nAnswer:")
             print(formatted if formatted else "No answer returned.")
+
+            analysis = analyze_response(answer)
+            print("\nAgent Analysis:")
+            print(f"- summary: {analysis.get('summary', '').strip()}")
+            print(f"- key_insight: {analysis.get('key_insight', '').strip()}")
+            print(f"- risk_level: {analysis.get('risk_level', '').strip()}")
+            print(f"- recommendation: {analysis.get('recommendation', '').strip()}")
 
             source_docs = result.get("source_documents") or []
             unique_sources: list[str] = []
