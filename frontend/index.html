@@ -234,6 +234,44 @@
         color: var(--muted);
       }
 
+      .agent-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      @media (min-width: 900px) {
+        .agent-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      .agent-card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.16);
+      }
+
+      .agent-card h4 {
+        margin: 0 0 10px;
+        font-size: 14px;
+      }
+
+      .decision-card {
+        border-color: rgba(110, 231, 255, 0.28);
+        background: linear-gradient(180deg, rgba(110, 231, 255, 0.1), rgba(255, 255, 255, 0.06));
+      }
+
+      .field-label {
+        margin: 10px 0 4px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+
       .pill {
         display: inline-flex;
         align-items: center;
@@ -331,17 +369,56 @@
           <div id="answerText" class="text">Ask a question to see an answer here.</div>
         </section>
 
-        <section class="panel">
-          <h3>Agent Analysis</h3>
+        <section class="panel decision-card">
+          <h3>Final Decision</h3>
           <div class="kv">
-            <div class="k">Summary</div>
-            <div id="analysisSummary" class="text"></div>
-            <div class="k">Key insight</div>
-            <div id="analysisInsight" class="text"></div>
-            <div class="k">Risk level</div>
-            <div id="analysisRisk" class="text"></div>
-            <div class="k">Recommendation</div>
-            <div id="analysisRec" class="text"></div>
+            <div class="k">Final risk</div>
+            <div id="decisionRisk" class="text"></div>
+            <div class="k">Decision</div>
+            <div id="decisionText" class="text"></div>
+            <div class="k">Priority action</div>
+            <div id="priorityAction" class="text"></div>
+          </div>
+        </section>
+
+        <section class="panel" style="grid-column: 1 / -1">
+          <h3>Multi-Agent Intelligence</h3>
+          <div class="agent-grid">
+            <div class="agent-card">
+              <h4>Supplier Agent</h4>
+              <div id="supplierRisk"></div>
+              <div class="field-label">Reason</div>
+              <div id="supplierReason" class="text"></div>
+              <div class="field-label">Recommended Action</div>
+              <div id="supplierAction" class="text"></div>
+            </div>
+
+            <div class="agent-card">
+              <h4>Inventory Agent</h4>
+              <div id="inventoryRisk"></div>
+              <div class="field-label">Reason</div>
+              <div id="inventoryReason" class="text"></div>
+              <div class="field-label">Recommended Action</div>
+              <div id="inventoryAction" class="text"></div>
+            </div>
+
+            <div class="agent-card">
+              <h4>Logistics Agent</h4>
+              <div id="logisticsRisk"></div>
+              <div class="field-label">Reason</div>
+              <div id="logisticsReason" class="text"></div>
+              <div class="field-label">Recommended Action</div>
+              <div id="logisticsAction" class="text"></div>
+            </div>
+
+            <div class="agent-card">
+              <h4>External Risk Agent</h4>
+              <div id="externalRiskRisk"></div>
+              <div class="field-label">Reason</div>
+              <div id="externalRiskReason" class="text"></div>
+              <div class="field-label">Recommended Action</div>
+              <div id="externalRiskAction" class="text"></div>
+            </div>
           </div>
         </section>
 
@@ -385,22 +462,45 @@
         el.innerHTML = `<span class="spinner" aria-hidden="true"></span>${message || "Processing..."}`;
       }
 
+      function normalizeRisk(value) {
+        const raw = String(value || "").trim();
+        return raw ? raw[0].toUpperCase() + raw.slice(1).toLowerCase() : "";
+      }
+
+      function riskClass(value) {
+        const risk = normalizeRisk(value).toLowerCase();
+        if (risk === "high") return "high";
+        if (risk === "medium") return "medium";
+        return "low";
+      }
+
+      function setRiskBadge(id, value) {
+        const risk = normalizeRisk(value);
+        $(id).innerHTML = risk ? `<span class="risk ${riskClass(risk)}">${risk}</span>` : "";
+      }
+
+      function renderAgent(prefix, data) {
+        const agent = data || {};
+        setRiskBadge(`${prefix}Risk`, agent.risk_level);
+        $(`${prefix}Reason`).textContent = agent.reason || "No reason returned.";
+        $(`${prefix}Action`).textContent = agent.recommended_action || "No action returned.";
+      }
+
       function renderResult(payload) {
         const answer = payload?.answer ?? "";
-        const analysis = payload?.analysis ?? {};
+        const agents = payload?.agents ?? {};
+        const decision = payload?.decision ?? {};
         const sources = Array.isArray(payload?.sources) ? payload.sources : [];
 
         $("answerText").textContent = answer || "No answer returned.";
-        $("analysisSummary").textContent = analysis.summary || "";
-        $("analysisInsight").textContent = analysis.key_insight || "";
-        const riskRaw = String(analysis.risk_level || "").trim();
-        const risk = riskRaw ? riskRaw[0].toUpperCase() + riskRaw.slice(1).toLowerCase() : "";
-        const riskClass =
-          risk.toLowerCase() === "high" ? "high" : risk.toLowerCase() === "medium" ? "medium" : "low";
-        $("analysisRisk").innerHTML = risk
-          ? `<span class="risk ${riskClass}">${risk}</span>`
-          : "";
-        $("analysisRec").textContent = analysis.recommendation || "";
+        setRiskBadge("decisionRisk", decision.final_risk);
+        $("decisionText").textContent = decision.final_decision || "No final decision returned.";
+        $("priorityAction").textContent = decision.priority_action || "No priority action returned.";
+
+        renderAgent("supplier", agents.supplier);
+        renderAgent("inventory", agents.inventory);
+        renderAgent("logistics", agents.logistics);
+        renderAgent("externalRisk", agents.external_risk);
 
         const ul = $("sourcesList");
         ul.innerHTML = "";
