@@ -1,7 +1,9 @@
+import asyncio
 import os
 import shutil
 from functools import lru_cache
 from pathlib import Path
+from typing import Any, Callable
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -9,6 +11,12 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.agents._common import AgentOutput, default_agent_output
+from app.agents.decision_agent import generate_final_decision
+from app.agents.external_risk_agent import analyze_external_risk
+from app.agents.inventory_agent import analyze_inventory
+from app.agents.logistics_agent import analyze_logistics
+from app.agents.supplier_agent import analyze_supplier
 from app.ingest import ingest_documents
 from app.query import build_qa_chain
 
@@ -40,6 +48,15 @@ def _top_unique_sources(result: dict, limit: int = 2) -> list[str]:
         if len(unique_sources) >= limit:
             break
     return unique_sources
+
+
+async def _run_agent(
+    name: str, analyzer: Callable[[str], AgentOutput], answer: str
+) -> AgentOutput:
+    try:
+        return await run_in_threadpool(analyzer, answer)
+    except Exception as e:
+        return default_agent_output(f"{name} failed to analyze the answer: {e}")
 
 
 app = FastAPI(title="DocFlow RAG API")
@@ -96,8 +113,30 @@ async def query_rag(payload: QueryRequest):
         qa = get_qa()
         result = await run_in_threadpool(qa.invoke, {"query": question})
         answer = str(result.get("result", "")).strip()
+        supplier, inventory, logistics, external_risk = await asyncio.gather(
+            _run_agent("Supplier Agent", analyze_supplier, answer),
+            _run_agent("Inventory Agent", analyze_inventory, answer),
+            _run_agent("Logistics Agent", analyze_logistics, answer),
+            _run_agent("External Risk Agent", analyze_external_risk, answer),
+        )
+        agents: dict[str, AgentOutput] = {
+            "supplier": supplier,
+            "inventory": inventory,
+            "logistics": logistics,
+            "external_risk": external_risk,
+        }
+        decision_inputs: list[dict[str, Any]] = [
+            {"agent": agent_name, **agent_output}
+            for agent_name, agent_output in agents.items()
+        ]
+        decision = await run_in_threadpool(generate_final_decision, decision_inputs)
         sources = _top_unique_sources(result, limit=2)
-        return {"answer": answer, "sources": sources}
+        return {
+            "answer": answer,
+            "agents": agents,
+            "decision": decision,
+            "sources": sources,
+        }
     except HTTPException:
         raise
     except Exception as e:
