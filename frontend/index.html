@@ -205,6 +205,52 @@
         font-weight: 650;
       }
 
+      .dashboard {
+        margin-top: 14px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      @media (min-width: 900px) {
+        .dashboard {
+          grid-template-columns: repeat(4, 1fr);
+        }
+      }
+
+      .metric-card {
+        background: var(--card2);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 14px;
+      }
+
+      .metric-label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+
+      .metric-value {
+        margin-top: 8px;
+        font-size: 26px;
+        font-weight: 800;
+      }
+
+      .metric-value.low {
+        color: rgba(87, 242, 135, 0.98);
+      }
+
+      .metric-value.medium {
+        color: rgba(255, 214, 102, 0.98);
+      }
+
+      .metric-value.high {
+        color: rgba(255, 107, 107, 0.98);
+      }
+
       .mono {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
           "Courier New", monospace;
@@ -363,6 +409,25 @@
         </section>
       </div>
 
+      <section class="dashboard" aria-label="Session dashboard">
+        <div class="metric-card">
+          <div class="metric-label">Total Queries</div>
+          <div id="totalQueries" class="metric-value">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Low Risk</div>
+          <div id="lowRiskCount" class="metric-value low">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Medium Risk</div>
+          <div id="mediumRiskCount" class="metric-value medium">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">High Risk</div>
+          <div id="highRiskCount" class="metric-value high">0</div>
+        </div>
+      </section>
+
       <div class="output" aria-label="Response output">
         <section class="panel">
           <h3>Answer</h3>
@@ -433,6 +498,14 @@
 
     <script>
       const API_BASE = "http://127.0.0.1:8000";
+      const dashboardState = {
+        totalQueries: 0,
+        riskCounts: {
+          Low: 0,
+          Medium: 0,
+          High: 0,
+        },
+      };
 
       const $ = (id) => document.getElementById(id);
 
@@ -479,6 +552,17 @@
         $(id).innerHTML = risk ? `<span class="risk ${riskClass(risk)}">${risk}</span>` : "";
       }
 
+      function updateDashboard(decision) {
+        const risk = normalizeRisk(decision?.final_risk) || "Low";
+        dashboardState.totalQueries += 1;
+        dashboardState.riskCounts[risk] = (dashboardState.riskCounts[risk] || 0) + 1;
+
+        $("totalQueries").textContent = String(dashboardState.totalQueries);
+        $("lowRiskCount").textContent = String(dashboardState.riskCounts.Low);
+        $("mediumRiskCount").textContent = String(dashboardState.riskCounts.Medium);
+        $("highRiskCount").textContent = String(dashboardState.riskCounts.High);
+      }
+
       function renderAgent(prefix, data) {
         const agent = data || {};
         setRiskBadge(`${prefix}Risk`, agent.risk_level);
@@ -496,6 +580,7 @@
         setRiskBadge("decisionRisk", decision.final_risk);
         $("decisionText").textContent = decision.final_decision || "No final decision returned.";
         $("priorityAction").textContent = decision.priority_action || "No priority action returned.";
+        updateDashboard(decision);
 
         renderAgent("supplier", agents.supplier);
         renderAgent("inventory", agents.inventory);
