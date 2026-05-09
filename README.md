@@ -2,7 +2,7 @@
 
 # 🚀 DocFlow RAG System
 
-An Agentic Retrieval-Augmented Generation (RAG) System that allows users to upload documents, query them, and receive not just answers—but structured insights including risk levels and recommendations.
+An Agentic Retrieval-Augmented Generation (RAG) System that allows users to upload documents, query them, and receive not just answers—but multi-agent supply chain intelligence with risk levels, recommendations, and final decision support.
 
 ---
 
@@ -10,12 +10,13 @@ An Agentic Retrieval-Augmented Generation (RAG) System that allows users to uplo
 
 Traditional RAG systems only return answers.
 
-👉 DocFlow goes beyond that by adding an Agent Layer that analyzes retrieved information and generates:
+👉 DocFlow goes beyond that by adding a RiskWise-style Multi-Agent Layer that analyzes retrieved information from multiple business perspectives:
 
-- 📌 Summary
-- 🔍 Key Insight
-- ⚠️ Risk Level
-- 💡 Recommendation
+- 🏭 Supplier Risk
+- 📦 Inventory Risk
+- 🚚 Logistics Risk
+- 🌍 External Risk
+- 🎯 Final Decision Recommendation
 
 ---
 
@@ -23,9 +24,10 @@ Traditional RAG systems only return answers.
 
 Frontend (HTML/JS UI)  
 ↓ FastAPI Backend  
-↓ RAG Pipeline (FAISS + Embeddings)  
-↓ LLM (OpenRouter)  
-↓ Agent Layer (Analysis + Decision)
+↓ RAG Pipeline (FAISS + OpenRouter Embeddings)  
+↓ LLM Answer Generation (OpenRouter)  
+↓ Multi-Agent Analysis Layer  
+↓ Final Decision Agent
 
 ---
 
@@ -44,13 +46,22 @@ Frontend (HTML/JS UI)
 - Context-aware answers using LLM
 - Source attribution for transparency
 
-### 🤖 Agent Layer (Core Innovation)
+### 🤖 Multi-Agent Layer (Core Innovation)
 
-- Converts answers into structured insights:
-  - Summary
-  - Key Insight
+- Converts retrieved answers into structured supply-chain intelligence:
+  - Supplier Agent
+  - Inventory Agent
+  - Logistics Agent
+  - External Risk Agent
+  - Decision Agent
+- Each domain agent returns:
   - Risk Level (Low / Medium / High)
-  - Actionable Recommendation
+  - Reason
+  - Recommended Action
+- The Decision Agent combines all outputs into:
+  - Final Risk
+  - Final Decision
+  - Priority Action
 
 ### 🌐 API Backend
 
@@ -65,8 +76,13 @@ Frontend (HTML/JS UI)
 - Ask questions
 - View:
   - Answer
-  - Agent Analysis
+  - Multi-Agent Intelligence
+  - Final Decision
   - Sources
+- Session dashboard:
+  - Total queries
+  - Low / Medium / High risk counts
+  - Reset dashboard control
 
 ---
 
@@ -83,7 +99,7 @@ Frontend (HTML/JS UI)
 ## 📦 Installation
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/DocFlow-RAG.git
+git clone https://github.com/anuragthippani1/DocFlow-RAG.git
 cd DocFlow-RAG
 
 python3 -m venv venv
@@ -112,7 +128,7 @@ OPENROUTER_APP_NAME=DocFlow-RAG
 ### Start Backend
 
 ```bash
-uvicorn app.main:app --reload
+./venv/bin/python -m uvicorn app.main:app --reload
 ```
 
 ### Open API Docs
@@ -134,17 +150,19 @@ What problem does GRAIL solve?
 ### Output
 
 - Answer from documents
-- Agent Analysis (summary, insight, risk, recommendation)
+- Supplier / Inventory / Logistics / External Risk agent outputs
+- Final Decision with priority action
 - Source references
 
 ---
 
 ## 🚀 Future Improvements
 
-- Multi-agent system (Supplier, Risk, Inventory agents)
 - Hybrid retrieval (vector + keyword search)
 - React-based frontend
-- Evaluation dashboard for RAG performance
+- Persistent query analytics dashboard
+- Exportable PDF/JSON risk reports
+- Authentication and team workspaces
 
 ---
 
