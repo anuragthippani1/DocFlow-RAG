@@ -344,6 +344,18 @@
         background: rgba(0, 0, 0, 0.18);
       }
 
+      .pill.online {
+        color: rgba(87, 242, 135, 0.98);
+        border-color: rgba(87, 242, 135, 0.45);
+        background: rgba(87, 242, 135, 0.12);
+      }
+
+      .pill.offline {
+        color: rgba(255, 107, 107, 0.98);
+        border-color: rgba(255, 107, 107, 0.45);
+        background: rgba(255, 107, 107, 0.12);
+      }
+
       .risk {
         display: inline-flex;
         align-items: center;
@@ -594,6 +606,22 @@
         setStatus($("queryStatus"), "Dashboard reset.", "ok");
       }
 
+      async function checkApiHealth() {
+        const pill = $("apiBasePill");
+        pill.classList.remove("online", "offline");
+        pill.textContent = `API: checking ${API_BASE}`;
+
+        try {
+          const res = await fetch(`${API_BASE}/health`);
+          if (!res.ok) throw new Error(`Health check failed (${res.status})`);
+          pill.classList.add("online");
+          pill.textContent = `API online: ${API_BASE}`;
+        } catch {
+          pill.classList.add("offline");
+          pill.textContent = `API offline: ${API_BASE}`;
+        }
+      }
+
       function renderAgent(prefix, data) {
         const agent = data || {};
         setRiskBadge(`${prefix}Risk`, agent.risk_level);
@@ -731,6 +759,8 @@
       $("questionInput").addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") askQuestion();
       });
+      checkApiHealth();
+      setInterval(checkApiHealth, 30000);
     </script>
   </body>
 </html>
