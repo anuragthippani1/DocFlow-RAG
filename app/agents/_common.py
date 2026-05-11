@@ -1,16 +1,15 @@
+import asyncio
 import json
-import os
 import re
 from typing import Any, Literal, TypedDict, cast
 
-from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
+from app.config import get_settings, openrouter_headers
+from app.logging_utils import get_logger
 
-load_dotenv()
-
-DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 RiskLevel = Literal["Low", "Medium", "High"]
+logger = get_logger(__name__)
 
 
 class AgentOutput(TypedDict):
@@ -25,24 +24,16 @@ class DecisionOutput(TypedDict):
     priority_action: str
 
 
-def openrouter_headers() -> dict[str, str]:
-    return {
-        "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", ""),
-        "X-Title": os.getenv("OPENROUTER_APP_NAME", "DocFlow-RAG"),
-    }
-
-
-def openai_compatible_base_url() -> str:
-    return os.getenv("OPENAI_API_BASE", DEFAULT_OPENROUTER_BASE_URL)
-
-
 def build_llm() -> ChatOpenAI:
+    settings = get_settings()
     return ChatOpenAI(
-        model=os.getenv("AGENT_MODEL", "gpt-3.5-turbo"),
+        model=settings.agent_model,
         temperature=0,
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=openai_compatible_base_url(),
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_api_base,
         default_headers=openrouter_headers(),
+        timeout=settings.llm_timeout_seconds,
+        max_retries=1,
     )
 
 
@@ -85,6 +76,12 @@ def default_agent_output(reason: str = "No risk signal identified.") -> AgentOut
     }
 
 
+def malformed_agent_output(agent_name: str) -> AgentOutput:
+    return default_agent_output(
+        f"{agent_name} returned malformed JSON, so DocFlow used a safe fallback."
+    )
+
+
 def default_decision_output() -> DecisionOutput:
     return {
         "final_risk": "Low",
@@ -93,59 +90,157 @@ def default_decision_output() -> DecisionOutput:
     }
 
 
-def analyze_agent_response(rag_answer: str, agent_name: str, focus: str) -> AgentOutput:
+def _agent_prompt(
+    rag_answer: str,
+    agent_name: str,
+    focus: str,
+    external_context: dict[str, Any] | None = None,
+) -> str:
+    context_block = ""
+    if external_context:
+        context_block = (
+            "\nOPTIONAL_EXTERNAL_CONTEXT:\n"
+            f"{json.dumps(external_context, indent=2, ensure_ascii=True)}\n"
+        )
+
+    return (
+        f"You are the {agent_name} in DocFlow/SentriX, a supply-chain intelligence system.\n"
+        f"Focus only on this domain: {focus}\n\n"
+        "Use ONLY the RAG answer and optional external context below. Do not invent facts.\n"
+        "If evidence is weak or absent, say so in the reason and keep risk_level Low.\n"
+        "Return ONLY one valid JSON object. No markdown. No code fences. No prose.\n"
+        "Required keys: risk_level, reason, recommended_action.\n"
+        'risk_level must be exactly one of: "Low", "Medium", "High".\n'
+        "reason must cite the evidence signal or say evidence is insufficient.\n"
+        "recommended_action must be actionable and concise.\n\n"
+        "RAG_ANSWER:\n"
+        f"{rag_answer}\n"
+        f"{context_block}\n"
+        "STRICT_JSON_SCHEMA:\n"
+        '{ "risk_level": "Low", "reason": "...", "recommended_action": "..." }'
+    )
+
+
+def _decision_prompt(agent_outputs: list[dict[str, Any]]) -> str:
+    return (
+        "You are the final Decision Agent in DocFlow/SentriX.\n"
+        "Combine domain agent outputs into one business recommendation.\n"
+        "Do not add facts that are not present in the agent outputs.\n"
+        "Return ONLY one valid JSON object. No markdown. No code fences. No prose.\n"
+        "Required keys: final_risk, final_decision, priority_action.\n"
+        'final_risk must be exactly one of: "Low", "Medium", "High".\n'
+        "Choose final_risk based on the highest material risk across the agents.\n\n"
+        "AGENT_OUTPUTS:\n"
+        f"{json.dumps(agent_outputs, indent=2, ensure_ascii=True)}\n\n"
+        "STRICT_JSON_SCHEMA:\n"
+        '{ "final_risk": "Low", "final_decision": "...", "priority_action": "..." }'
+    )
+
+
+def _agent_output_from_payload(payload: dict[str, Any], agent_name: str) -> AgentOutput:
+    return {
+        "risk_level": coerce_risk_level(payload.get("risk_level", "Low")),
+        "reason": str(payload.get("reason", "")).strip()
+        or f"{agent_name} did not provide a detailed reason.",
+        "recommended_action": str(payload.get("recommended_action", "")).strip()
+        or "Review the source documents and validate the finding with operational data.",
+    }
+
+
+async def analyze_agent_response_async(
+    rag_answer: str,
+    agent_name: str,
+    focus: str,
+    external_context: dict[str, Any] | None = None,
+) -> AgentOutput:
     answer = (rag_answer or "").strip()
     if not answer:
         return default_agent_output("No RAG answer was available for analysis.")
 
-    prompt = (
-        f"You are the {agent_name} in a supply-chain intelligence system.\n"
-        f"Focus area: {focus}\n\n"
-        "Analyze the RAG answer for supply-chain decision risk.\n"
-        "Return ONLY a strict JSON object. No markdown. No extra text.\n"
-        'risk_level must be exactly one of: "Low", "Medium", "High".\n'
-        "Keep the reason and recommended_action concise and actionable.\n\n"
-        "RAG_ANSWER:\n"
-        f"{answer}\n\n"
-        "JSON schema:\n"
-        '{ "risk_level": "Low | Medium | High", "reason": "...", "recommended_action": "..." }'
-    )
+    prompt = _agent_prompt(answer, agent_name, focus, external_context)
+    try:
+        response = await asyncio.wait_for(
+            build_llm().ainvoke(prompt), timeout=get_settings().agent_timeout_seconds
+        )
+        payload = extract_json_object(str(response.content))
+        if not payload:
+            logger.warning("Malformed JSON from %s: %s", agent_name, response.content)
+            return malformed_agent_output(agent_name)
+        return _agent_output_from_payload(payload, agent_name)
+    except asyncio.TimeoutError:
+        logger.warning("%s timed out", agent_name)
+        return default_agent_output(f"{agent_name} timed out while analyzing the answer.")
+    except Exception as e:
+        logger.exception("%s failed", agent_name)
+        return default_agent_output(f"{agent_name} failed to analyze the answer: {e}")
 
-    response = build_llm().invoke(prompt)
-    payload = extract_json_object(str(response.content)) or {}
 
+def analyze_agent_response(
+    rag_answer: str,
+    agent_name: str,
+    focus: str,
+    external_context: dict[str, Any] | None = None,
+) -> AgentOutput:
+    answer = (rag_answer or "").strip()
+    if not answer:
+        return default_agent_output("No RAG answer was available for analysis.")
+
+    try:
+        response = build_llm().invoke(_agent_prompt(answer, agent_name, focus, external_context))
+        payload = extract_json_object(str(response.content))
+        if not payload:
+            return malformed_agent_output(agent_name)
+        return _agent_output_from_payload(payload, agent_name)
+    except Exception as e:
+        logger.exception("%s failed", agent_name)
+        return default_agent_output(f"{agent_name} failed to analyze the answer: {e}")
+
+
+def _decision_output_from_payload(payload: dict[str, Any]) -> DecisionOutput:
+    fallback = default_decision_output()
     return {
-        "risk_level": coerce_risk_level(payload.get("risk_level", "Low")),
-        "reason": str(payload.get("reason", "")).strip()
-        or "The agent did not provide a detailed reason.",
-        "recommended_action": str(payload.get("recommended_action", "")).strip()
-        or "Review the source documents and validate the finding with operational data.",
+        "final_risk": coerce_risk_level(payload.get("final_risk", "Low")),
+        "final_decision": str(payload.get("final_decision", "")).strip()
+        or fallback["final_decision"],
+        "priority_action": str(payload.get("priority_action", "")).strip()
+        or fallback["priority_action"],
     }
+
+
+async def generate_decision_response_async(
+    agent_outputs: list[dict[str, Any]]
+) -> DecisionOutput:
+    if not agent_outputs:
+        return default_decision_output()
+
+    try:
+        response = await asyncio.wait_for(
+            build_llm().ainvoke(_decision_prompt(agent_outputs)),
+            timeout=get_settings().agent_timeout_seconds,
+        )
+        payload = extract_json_object(str(response.content))
+        if not payload:
+            logger.warning("Malformed JSON from Decision Agent: %s", response.content)
+            return default_decision_output()
+        return _decision_output_from_payload(payload)
+    except asyncio.TimeoutError:
+        logger.warning("Decision Agent timed out")
+        return default_decision_output()
+    except Exception:
+        logger.exception("Decision Agent failed")
+        return default_decision_output()
 
 
 def generate_decision_response(agent_outputs: list[dict[str, Any]]) -> DecisionOutput:
     if not agent_outputs:
         return default_decision_output()
 
-    prompt = (
-        "You are the final decision agent for a supply-chain intelligence system.\n"
-        "Combine the domain agent outputs into one business recommendation.\n"
-        "Return ONLY a strict JSON object. No markdown. No extra text.\n"
-        'final_risk must be exactly one of: "Low", "Medium", "High".\n'
-        "The final risk should reflect the highest material concern across agents.\n\n"
-        "AGENT_OUTPUTS:\n"
-        f"{json.dumps(agent_outputs, indent=2)}\n\n"
-        "JSON schema:\n"
-        '{ "final_risk": "Low | Medium | High", "final_decision": "...", "priority_action": "..." }'
-    )
-
-    response = build_llm().invoke(prompt)
-    payload = extract_json_object(str(response.content)) or {}
-
-    return {
-        "final_risk": coerce_risk_level(payload.get("final_risk", "Low")),
-        "final_decision": str(payload.get("final_decision", "")).strip()
-        or default_decision_output()["final_decision"],
-        "priority_action": str(payload.get("priority_action", "")).strip()
-        or default_decision_output()["priority_action"],
-    }
+    try:
+        response = build_llm().invoke(_decision_prompt(agent_outputs))
+        payload = extract_json_object(str(response.content))
+        if not payload:
+            return default_decision_output()
+        return _decision_output_from_payload(payload)
+    except Exception:
+        logger.exception("Decision Agent failed")
+        return default_decision_output()
