@@ -1,9 +1,11 @@
 import asyncio
 import os
 import shutil
+import time
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -12,18 +14,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.agents._common import AgentOutput, default_agent_output
-from app.agents.decision_agent import generate_final_decision
-from app.agents.external_risk_agent import analyze_external_risk
-from app.agents.inventory_agent import analyze_inventory
-from app.agents.logistics_agent import analyze_logistics
-from app.agents.supplier_agent import analyze_supplier
+from app.agents.decision_agent import generate_final_decision_async
+from app.agents.external_risk_agent import analyze_external_risk_async
+from app.agents.inventory_agent import analyze_inventory_async
+from app.agents.logistics_agent import analyze_logistics_async
+from app.agents.supplier_agent import analyze_supplier_async
+from app.config import get_settings
+from app.external_risk import fetch_external_risk_context
 from app.ingest import ingest_documents
+from app.logging_utils import get_logger
 from app.query import build_qa_chain
 
 
 load_dotenv()
 
 DATA_DIR = Path("data")
+logger = get_logger(__name__)
+_query_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 
 
 class QueryRequest(BaseModel):
@@ -50,12 +57,48 @@ def _top_unique_sources(result: dict, limit: int = 2) -> list[str]:
     return unique_sources
 
 
+def _normalize_question(question: str) -> str:
+    return " ".join(question.strip().lower().split())
+
+
+def _get_cached_response(question: str) -> dict[str, Any] | None:
+    settings = get_settings()
+    if not settings.query_cache_enabled:
+        return None
+
+    key = _normalize_question(question)
+    cached = _query_cache.get(key)
+    if not cached:
+        return None
+
+    _query_cache.move_to_end(key)
+    logger.info("Query cache hit")
+    return cached[1]
+
+
+def _set_cached_response(question: str, response: dict[str, Any]) -> None:
+    settings = get_settings()
+    if not settings.query_cache_enabled:
+        return
+
+    key = _normalize_question(question)
+    _query_cache[key] = (time.time(), response)
+    _query_cache.move_to_end(key)
+    while len(_query_cache) > settings.query_cache_max_size:
+        _query_cache.popitem(last=False)
+
+
+def _clear_query_cache() -> None:
+    _query_cache.clear()
+
+
 async def _run_agent(
-    name: str, analyzer: Callable[[str], AgentOutput], answer: str
+    name: str, analyzer: Callable[[], Awaitable[AgentOutput]]
 ) -> AgentOutput:
     try:
-        return await run_in_threadpool(analyzer, answer)
+        return await analyzer()
     except Exception as e:
+        logger.exception("%s failed during orchestration", name)
         return default_agent_output(f"{name} failed to analyze the answer: {e}")
 
 
@@ -83,6 +126,10 @@ async def upload_pdf(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF uploads are supported.")
 
+    content_type = (file.content_type or "").lower()
+    if content_type and content_type not in {"application/pdf", "application/octet-stream"}:
+        raise HTTPException(status_code=400, detail="Uploaded file must be a PDF.")
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     dest_path = DATA_DIR / os.path.basename(file.filename)
 
@@ -102,7 +149,9 @@ async def upload_pdf(file: UploadFile = File(...)):
         await run_in_threadpool(ingest_documents)
         # Vector DB changed; rebuild the cached chain on next query.
         get_qa.cache_clear()
+        _clear_query_cache()
     except Exception as e:
+        logger.exception("Ingestion failed")
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
 
     return {"message": "Upload successful. Vector DB updated.", "filename": dest_path.name}
@@ -115,14 +164,30 @@ async def query_rag(payload: QueryRequest):
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
     try:
+        cached = _get_cached_response(question)
+        if cached:
+            return cached
+
+        settings = get_settings()
         qa = get_qa()
-        result = await run_in_threadpool(qa.invoke, {"query": question})
+        result = await asyncio.wait_for(
+            run_in_threadpool(qa.invoke, {"query": question}),
+            timeout=settings.query_timeout_seconds,
+        )
         answer = str(result.get("result", "")).strip()
+        sources = _top_unique_sources(result, limit=settings.source_limit)
+        if not answer or not sources:
+            answer = answer or "No relevant document context was found for this question."
+
+        external_context = await fetch_external_risk_context(question)
         supplier, inventory, logistics, external_risk = await asyncio.gather(
-            _run_agent("Supplier Agent", analyze_supplier, answer),
-            _run_agent("Inventory Agent", analyze_inventory, answer),
-            _run_agent("Logistics Agent", analyze_logistics, answer),
-            _run_agent("External Risk Agent", analyze_external_risk, answer),
+            _run_agent("Supplier Agent", lambda: analyze_supplier_async(answer)),
+            _run_agent("Inventory Agent", lambda: analyze_inventory_async(answer)),
+            _run_agent("Logistics Agent", lambda: analyze_logistics_async(answer)),
+            _run_agent(
+                "External Risk Agent",
+                lambda: analyze_external_risk_async(answer, external_context),
+            ),
         )
         agents: dict[str, AgentOutput] = {
             "supplier": supplier,
@@ -134,15 +199,20 @@ async def query_rag(payload: QueryRequest):
             {"agent": agent_name, **agent_output}
             for agent_name, agent_output in agents.items()
         ]
-        decision = await run_in_threadpool(generate_final_decision, decision_inputs)
-        sources = _top_unique_sources(result, limit=2)
-        return {
+        decision = await generate_final_decision_async(decision_inputs)
+        response = {
             "answer": answer,
             "agents": agents,
             "decision": decision,
             "sources": sources,
         }
+        _set_cached_response(question, response)
+        return response
+    except asyncio.TimeoutError:
+        logger.warning("Query timed out")
+        raise HTTPException(status_code=504, detail="Query timed out. Try a narrower question.")
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("Query failed")
         raise HTTPException(status_code=500, detail=f"Query failed: {e}")
