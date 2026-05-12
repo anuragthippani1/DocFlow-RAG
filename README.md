@@ -69,6 +69,11 @@ Frontend (HTML/JS UI)
 - Endpoints:
   - POST /upload → Upload and process documents
   - POST /query → Ask questions and get structured responses
+  - GET /health → API liveness check
+  - GET /stats → Cache stats, query count, and uptime
+- Request timing middleware (X-Response-Time header)
+- Slow-request logging (>5 s)
+- Production-safe error responses (no internal stack traces leaked)
 
 ### 💻 Frontend UI
 
@@ -83,6 +88,8 @@ Frontend (HTML/JS UI)
   - Total queries
   - Low / Medium / High risk counts
   - Reset dashboard control
+- Response time display per query
+- Persistent query history (localStorage) with risk badges and re-run on click
 
 ---
 
