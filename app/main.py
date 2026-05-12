@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from starlette.responses import Response
 
 from app.agents._common import AgentOutput, default_agent_output
 from app.agents.decision_agent import generate_final_decision_async
@@ -30,7 +31,10 @@ load_dotenv()
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
+_start_time = time.time()
 _query_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+_query_count = 0
+_cache_hits = 0
 
 
 class QueryRequest(BaseModel):
@@ -112,10 +116,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+SLOW_REQUEST_THRESHOLD_MS = 5000
+
+
+@app.middleware("http")
+async def timing_middleware(request: Request, call_next: Callable) -> Response:
+    start = time.perf_counter()
+    response: Response = await call_next(request)
+    elapsed_ms = round((time.perf_counter() - start) * 1000, 1)
+    response.headers["X-Response-Time"] = f"{elapsed_ms}ms"
+    if elapsed_ms > SLOW_REQUEST_THRESHOLD_MS:
+        logger.warning(
+            "Slow request: %s %s took %.1fms", request.method, request.url.path, elapsed_ms
+        )
+    return response
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "DocFlow RAG API"}
+
+
+@app.get("/stats")
+async def stats():
+    uptime_seconds = round(time.time() - _start_time, 1)
+    return {
+        "uptime_seconds": uptime_seconds,
+        "total_queries": _query_count,
+        "cache_hits": _cache_hits,
+        "cache_size": len(_query_cache),
+        "cache_max_size": get_settings().query_cache_max_size,
+        "cache_enabled": get_settings().query_cache_enabled,
+    }
 
 
 @app.post("/upload")
@@ -136,8 +168,9 @@ async def upload_pdf(file: UploadFile = File(...)):
     try:
         with dest_path.open("wb") as f:
             shutil.copyfileobj(file.file, f)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
+    except Exception:
+        logger.exception("Failed to save uploaded file %s", file.filename)
+        raise HTTPException(status_code=500, detail="Failed to save the uploaded file.")
     finally:
         try:
             file.file.close()
@@ -150,9 +183,12 @@ async def upload_pdf(file: UploadFile = File(...)):
         # Vector DB changed; rebuild the cached chain on next query.
         get_qa.cache_clear()
         _clear_query_cache()
-    except Exception as e:
-        logger.exception("Ingestion failed")
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
+    except Exception:
+        logger.exception("Ingestion failed for %s", file.filename)
+        raise HTTPException(
+            status_code=500,
+            detail="Document ingestion failed. Ensure the PDF is valid and try again.",
+        )
 
     return {"message": "Upload successful. Vector DB updated.", "filename": dest_path.name}
 
@@ -163,9 +199,14 @@ async def query_rag(payload: QueryRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
+    global _query_count, _cache_hits
+
     try:
+        _query_count += 1
+
         cached = _get_cached_response(question)
         if cached:
+            _cache_hits += 1
             return cached
 
         settings = get_settings()
@@ -209,10 +250,13 @@ async def query_rag(payload: QueryRequest):
         _set_cached_response(question, response)
         return response
     except asyncio.TimeoutError:
-        logger.warning("Query timed out")
+        logger.warning("Query timed out for: %s", question[:80])
         raise HTTPException(status_code=504, detail="Query timed out. Try a narrower question.")
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Query failed")
-        raise HTTPException(status_code=500, detail=f"Query failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An internal error occurred while processing your query. Please try again.",
+        )
