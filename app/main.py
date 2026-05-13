@@ -29,6 +29,9 @@ from app.query import build_qa_chain
 
 load_dotenv()
 
+# Bump when releasing meaningful API or behavior changes.
+APP_VERSION = "1.2.0"
+
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
 _start_time = time.time()
@@ -134,13 +137,14 @@ async def timing_middleware(request: Request, call_next: Callable) -> Response:
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "DocFlow RAG API"}
+    return {"status": "ok", "service": "DocFlow RAG API", "version": APP_VERSION}
 
 
 @app.get("/stats")
 async def stats():
     uptime_seconds = round(time.time() - _start_time, 1)
     return {
+        "version": APP_VERSION,
         "uptime_seconds": uptime_seconds,
         "total_queries": _query_count,
         "cache_hits": _cache_hits,

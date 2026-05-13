@@ -69,8 +69,8 @@ Frontend (HTML/JS UI)
 - Endpoints:
   - POST /upload → Upload and process documents
   - POST /query → Ask questions and get structured responses
-  - GET /health → API liveness check
-  - GET /stats → Cache stats, query count, and uptime
+  - GET /health → API liveness check (includes `version`)
+  - GET /stats → Cache stats, query count, uptime, and `version`
 - Request timing middleware (X-Response-Time header)
 - Slow-request logging (>5 s)
 - Production-safe error responses (no internal stack traces leaked)
