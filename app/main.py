@@ -30,7 +30,7 @@ from app.query import build_qa_chain
 load_dotenv()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
@@ -117,6 +117,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # So browser JS on another origin (e.g. static UI on :5500) can read timing headers.
+    expose_headers=["X-Response-Time"],
 )
 
 SLOW_REQUEST_THRESHOLD_MS = 5000
