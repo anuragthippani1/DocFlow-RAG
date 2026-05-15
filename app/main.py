@@ -30,7 +30,7 @@ from app.query import build_qa_chain
 load_dotenv()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.2.2"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
