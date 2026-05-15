@@ -705,8 +705,10 @@
         try {
           const res = await fetch(`${API_BASE}/health`);
           if (!res.ok) throw new Error(`Health check failed (${res.status})`);
+          const data = await safeJson(res);
+          const version = data?.version ? ` v${data.version}` : "";
           pill.classList.add("online");
-          pill.textContent = `API online: ${API_BASE}`;
+          pill.textContent = `API online${version}: ${API_BASE}`;
         } catch {
           pill.classList.add("offline");
           pill.textContent = `API offline: ${API_BASE}`;

@@ -119,14 +119,19 @@ pip install -r requirements.txt
 
 ## 🔐 Environment Variables
 
-Create a `.env` file:
+Copy the example file and add your OpenRouter key:
+
+```bash
+cp .env.example .env
+```
+
+Minimum required in `.env`:
 
 ```bash
 OPENAI_API_KEY=your_openrouter_key
-OPENAI_API_BASE=https://openrouter.ai/api/v1
-OPENROUTER_SITE_URL=http://localhost
-OPENROUTER_APP_NAME=DocFlow-RAG
 ```
+
+See `.env.example` for all optional settings (models, timeouts, cache, external risk APIs).
 
 ---
 
