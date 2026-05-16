@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.responses import Response
 
@@ -30,7 +31,7 @@ from app.query import build_qa_chain
 load_dotenv()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
@@ -117,8 +118,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    # So browser JS on another origin (e.g. static UI on :5500) can read timing headers.
-    expose_headers=["X-Response-Time"],
+    # So browser JS on another origin (e.g. static UI on :5500) can read custom headers.
+    expose_headers=["X-Response-Time", "X-Cache"],
 )
 
 SLOW_REQUEST_THRESHOLD_MS = 5000
@@ -140,6 +141,15 @@ async def timing_middleware(request: Request, call_next: Callable) -> Response:
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "DocFlow RAG API", "version": APP_VERSION}
+
+
+@app.get("/documents")
+async def list_documents():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    pdfs = sorted(
+        f.name for f in DATA_DIR.iterdir() if f.is_file() and f.name.lower().endswith(".pdf")
+    )
+    return {"count": len(pdfs), "documents": pdfs}
 
 
 @app.get("/stats")
@@ -213,7 +223,7 @@ async def query_rag(payload: QueryRequest):
         cached = _get_cached_response(question)
         if cached:
             _cache_hits += 1
-            return cached
+            return JSONResponse(content=cached, headers={"X-Cache": "HIT"})
 
         settings = get_settings()
         qa = get_qa()
@@ -254,7 +264,7 @@ async def query_rag(payload: QueryRequest):
             "sources": sources,
         }
         _set_cached_response(question, response)
-        return response
+        return JSONResponse(content=response, headers={"X-Cache": "MISS"})
     except asyncio.TimeoutError:
         logger.warning("Query timed out for: %s", question[:80])
         raise HTTPException(status_code=504, detail="Query timed out. Try a narrower question.")
