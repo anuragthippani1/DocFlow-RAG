@@ -71,6 +71,7 @@ Frontend (HTML/JS UI)
   - POST /query → Ask questions and get structured responses
   - GET /health → API liveness check (includes `version`)
   - GET /stats → Cache stats, query count, uptime, and `version`
+  - GET /documents → List indexed PDF filenames in `data/`
 - Request timing middleware (X-Response-Time header)
 - Slow-request logging (>5 s)
 - Production-safe error responses (no internal stack traces leaked)
@@ -147,11 +148,16 @@ See `.env.example` for all optional settings (models, timeouts, cache, external 
 
 `http://127.0.0.1:8000/docs`
 
-### Open Frontend
+### Start Frontend
 
-Open:
+Serve the static UI (required for API calls — `file://` is blocked by the browser):
 
-`frontend/index.html`
+```bash
+cd frontend
+python3 -m http.server 5500
+```
+
+Open: `http://127.0.0.1:5500/`
 
 ---
 

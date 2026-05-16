@@ -491,6 +491,7 @@
             <button id="uploadBtn">Upload</button>
           </div>
           <div id="uploadStatus" class="status" role="status" aria-live="polite"></div>
+          <div id="docCountPill" class="pill" style="margin-top: 10px"></div>
         </section>
 
         <section class="card" aria-label="Ask a question">
@@ -715,6 +716,20 @@
         }
       }
 
+      async function refreshDocuments() {
+        const pill = $("docCountPill");
+        if (!pill) return;
+        try {
+          const res = await fetch(`${API_BASE}/documents`);
+          if (!res.ok) throw new Error("documents unavailable");
+          const data = await safeJson(res);
+          const count = data?.count ?? 0;
+          pill.textContent = count === 1 ? "1 PDF indexed" : `${count} PDFs indexed`;
+        } catch {
+          pill.textContent = "Documents: unavailable";
+        }
+      }
+
       function renderAgent(prefix, data) {
         const agent = data || {};
         setRiskBadge(`${prefix}Risk`, agent.risk_level);
@@ -802,6 +817,7 @@
           }
 
           setStatus(status, data?.message || "Upload successful.", "ok");
+          await refreshDocuments();
         } catch (e) {
           setStatus(status, `Upload error: ${e?.message || e}`, "err");
         } finally {
@@ -907,7 +923,9 @@
           renderResult(data);
 
           $("responseTime").textContent = serverTime ? `Server: ${serverTime}` : `${elapsedMs}ms`;
-          $("cacheIndicator").textContent = "";
+          const cacheStatus = res.headers.get("X-Cache");
+          $("cacheIndicator").textContent =
+            cacheStatus === "HIT" ? "Cached response" : cacheStatus === "MISS" ? "Fresh response" : "";
           $("responseMeta").style.display = "flex";
 
           addHistoryEntry(q, elapsedMs, data?.decision?.final_risk);
@@ -929,6 +947,7 @@
         if (ev.key === "Enter") askQuestion();
       });
       checkApiHealth();
+      refreshDocuments();
       setInterval(checkApiHealth, 30000);
       renderHistory();
     </script>
