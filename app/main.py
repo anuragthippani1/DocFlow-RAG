@@ -31,7 +31,7 @@ from app.query import build_qa_chain
 load_dotenv()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.2.3"
+APP_VERSION = "1.2.4"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
@@ -50,12 +50,20 @@ def get_qa():
     return build_qa_chain()
 
 
+def _source_label(metadata: dict) -> str:
+    file_name = metadata.get("file_name")
+    if file_name:
+        return str(file_name)
+    source = str(metadata.get("source", "Unknown"))
+    return Path(source).name if source not in {"", "Unknown"} else source
+
+
 def _top_unique_sources(result: dict, limit: int = 2) -> list[str]:
     source_docs = result.get("source_documents") or []
     unique_sources: list[str] = []
     seen: set[str] = set()
     for doc in source_docs:
-        src = doc.metadata.get("source", "Unknown")
+        src = _source_label(doc.metadata or {})
         if src in seen:
             continue
         seen.add(src)
@@ -150,6 +158,13 @@ async def list_documents():
         f.name for f in DATA_DIR.iterdir() if f.is_file() and f.name.lower().endswith(".pdf")
     )
     return {"count": len(pdfs), "documents": pdfs}
+
+
+@app.post("/cache/clear")
+async def clear_cache():
+    _clear_query_cache()
+    logger.info("Query cache cleared via API")
+    return {"message": "Query cache cleared."}
 
 
 @app.get("/stats")

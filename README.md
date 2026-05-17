@@ -72,6 +72,7 @@ Frontend (HTML/JS UI)
   - GET /health → API liveness check (includes `version`)
   - GET /stats → Cache stats, query count, uptime, and `version`
   - GET /documents → List indexed PDF filenames in `data/`
+  - POST /cache/clear → Clear the in-memory query cache
 - Request timing middleware (X-Response-Time header)
 - Slow-request logging (>5 s)
 - Production-safe error responses (no internal stack traces leaked)
