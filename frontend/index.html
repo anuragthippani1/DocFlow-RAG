@@ -240,6 +240,13 @@
         width: 100%;
       }
 
+      .dashboard-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        justify-content: center;
+      }
+
       .metric-label {
         color: var(--muted);
         font-size: 12px;
@@ -561,8 +568,15 @@
           <div class="metric-label">High Risk</div>
           <div id="highRiskCount" class="metric-value high">0</div>
         </div>
+        <div class="metric-card">
+          <div class="metric-label">Cache Hit Rate</div>
+          <div id="cacheHitRate" class="metric-value">—</div>
+        </div>
         <div class="metric-card dashboard-actions">
           <button id="resetDashboardBtn" class="secondary" type="button">Reset Dashboard</button>
+          <button id="clearCacheBtn" class="secondary" type="button" style="margin-top: 8px">
+            Clear Cache
+          </button>
         </div>
       </section>
 
@@ -740,11 +754,48 @@
           if (!res.ok) throw new Error(`Health check failed (${res.status})`);
           const data = await safeJson(res);
           const version = data?.version ? ` v${data.version}` : "";
+          const dbNote = data?.vector_db_ready === false ? " · no vector DB" : "";
           pill.classList.add("online");
-          pill.textContent = `API online${version}: ${API_BASE}`;
+          pill.textContent = `API online${version}${dbNote}: ${API_BASE}`;
         } catch {
           pill.classList.add("offline");
           pill.textContent = `API offline: ${API_BASE}`;
+        }
+      }
+
+      async function refreshServerStats() {
+        const el = $("cacheHitRate");
+        if (!el) return;
+        try {
+          const res = await fetch(`${API_BASE}/stats`);
+          if (!res.ok) throw new Error("stats unavailable");
+          const data = await safeJson(res);
+          const total = data?.total_queries ?? 0;
+          const hits = data?.cache_hits ?? 0;
+          if (!total) {
+            el.textContent = "—";
+            return;
+          }
+          const pct = Math.round((hits / total) * 100);
+          el.textContent = `${pct}%`;
+          el.title = `${hits} hits / ${total} queries · cache size ${data?.cache_size ?? 0}`;
+        } catch {
+          el.textContent = "—";
+        }
+      }
+
+      async function clearServerCache() {
+        const status = $("queryStatus");
+        try {
+          const res = await fetch(`${API_BASE}/cache/clear`, { method: "POST" });
+          const data = await safeJson(res);
+          if (!res.ok) {
+            throw new Error(data?.detail || `Clear failed (${res.status})`);
+          }
+          setStatus(status, data?.message || "Query cache cleared.", "ok");
+          await refreshServerStats();
+        } catch (e) {
+          setStatus(status, `Cache clear error: ${e?.message || e}`, "err");
         }
       }
 
@@ -1001,6 +1052,7 @@
           $("responseMeta").style.display = "flex";
 
           addHistoryEntry(q, elapsedMs, data?.decision?.final_risk);
+          await refreshServerStats();
           setStatus(status, "Done.", "ok");
         } catch (e) {
           setStatus(status, `Query error: ${e?.message || e}`, "err");
@@ -1014,6 +1066,7 @@
       $("uploadBtn").addEventListener("click", uploadPdf);
       $("askBtn").addEventListener("click", askQuestion);
       $("resetDashboardBtn").addEventListener("click", resetDashboard);
+      $("clearCacheBtn").addEventListener("click", clearServerCache);
       $("clearHistoryBtn").addEventListener("click", clearHistory);
       $("questionInput").addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") askQuestion();
@@ -1021,6 +1074,7 @@
       initSuggestions();
       checkApiHealth();
       refreshDocuments();
+      refreshServerStats();
       setInterval(checkApiHealth, 30000);
       renderHistory();
     </script>
