@@ -31,7 +31,7 @@ from app.query import build_qa_chain
 load_dotenv()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.2.5"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
@@ -146,9 +146,21 @@ async def timing_middleware(request: Request, call_next: Callable) -> Response:
     return response
 
 
+def _vector_db_ready() -> bool:
+    settings = get_settings()
+    db_dir = Path(settings.db_path)
+    return (db_dir / "index.faiss").is_file() and (db_dir / "index.pkl").is_file()
+
+
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "DocFlow RAG API", "version": APP_VERSION}
+    ready = _vector_db_ready()
+    return {
+        "status": "ok" if ready else "degraded",
+        "service": "DocFlow RAG API",
+        "version": APP_VERSION,
+        "vector_db_ready": ready,
+    }
 
 
 @app.get("/documents")

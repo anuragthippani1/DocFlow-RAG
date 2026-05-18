@@ -69,7 +69,7 @@ Frontend (HTML/JS UI)
 - Endpoints:
   - POST /upload → Upload and process documents
   - POST /query → Ask questions and get structured responses
-  - GET /health → API liveness check (includes `version`)
+  - GET /health → API liveness check (includes `version`, `vector_db_ready`)
   - GET /stats → Cache stats, query count, uptime, and `version`
   - GET /documents → List indexed PDF filenames in `data/`
   - POST /cache/clear → Clear the in-memory query cache
