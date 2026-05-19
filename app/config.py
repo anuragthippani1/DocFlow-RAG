@@ -56,6 +56,10 @@ class Settings:
     shipping_api_url: str | None
 
 
+class ConfigurationError(RuntimeError):
+    """Raised when required runtime configuration is missing or invalid."""
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings(
@@ -83,6 +87,29 @@ def get_settings() -> Settings:
         news_api_url=os.getenv("NEWS_API_URL"),
         shipping_api_url=os.getenv("SHIPPING_API_URL"),
     )
+
+
+def validate_settings(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
+    missing: list[str] = []
+
+    if not settings.openai_api_key:
+        missing.append("OPENAI_API_KEY")
+    if not settings.openai_api_base:
+        missing.append("OPENAI_API_BASE")
+    if not settings.embedding_model:
+        missing.append("EMBEDDING_MODEL")
+    if not settings.qa_model:
+        missing.append("QA_MODEL")
+    if not settings.agent_model:
+        missing.append("AGENT_MODEL")
+
+    if missing:
+        joined = ", ".join(missing)
+        raise ConfigurationError(
+            f"Missing required configuration: {joined}. "
+            "Copy .env.example to .env and fill in the required values."
+        )
 
 
 def openrouter_headers() -> dict[str, str]:

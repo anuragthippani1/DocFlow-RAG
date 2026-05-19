@@ -21,7 +21,7 @@ from app.agents.external_risk_agent import analyze_external_risk_async
 from app.agents.inventory_agent import analyze_inventory_async
 from app.agents.logistics_agent import analyze_logistics_async
 from app.agents.supplier_agent import analyze_supplier_async
-from app.config import get_settings
+from app.config import ConfigurationError, get_settings, validate_settings
 from app.external_risk import fetch_external_risk_context
 from app.ingest import ingest_documents
 from app.logging_utils import get_logger
@@ -146,6 +146,15 @@ async def timing_middleware(request: Request, call_next: Callable) -> Response:
     return response
 
 
+@app.on_event("startup")
+async def validate_startup_config() -> None:
+    try:
+        validate_settings()
+    except ConfigurationError:
+        logger.exception("Application configuration is invalid")
+        raise
+
+
 def _vector_db_ready() -> bool:
     settings = get_settings()
     db_dir = Path(settings.db_path)
@@ -246,6 +255,12 @@ async def query_rag(payload: QueryRequest):
 
     try:
         _query_count += 1
+
+        if not _vector_db_ready():
+            return JSONResponse(
+                status_code=503,
+                content={"error": "No vector database found. Upload documents first."},
+            )
 
         cached = _get_cached_response(question)
         if cached:
