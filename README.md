@@ -76,6 +76,8 @@ Frontend (HTML/JS UI)
 - Request timing middleware (X-Response-Time header)
 - Slow-request logging (>5 s)
 - Production-safe error responses (no internal stack traces leaked)
+- Startup validates required OpenRouter configuration
+- `/query` returns HTTP 503 until a FAISS vector database exists
 
 ### 💻 Frontend UI
 
@@ -134,6 +136,9 @@ OPENAI_API_KEY=your_openrouter_key
 ```
 
 See `.env.example` for all optional settings (models, timeouts, cache, external risk APIs).
+
+The backend validates required settings on startup. If `OPENAI_API_KEY` is missing,
+the API exits with a clear configuration error.
 
 ---
 
