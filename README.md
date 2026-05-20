@@ -141,6 +141,12 @@ See `.env.example` for all optional settings (models, timeouts, cache, external 
 The backend validates required settings on startup. If `OPENAI_API_KEY` is missing,
 the API exits with a clear configuration error.
 
+Useful security/runtime settings:
+
+- `MAX_UPLOAD_SIZE_MB` controls the maximum accepted PDF size (default: 25 MB).
+- `CORS_ORIGINS` is a comma-separated allowlist for browser clients, for example:
+  `http://127.0.0.1:5500,http://localhost:5500`.
+
 ---
 
 ## ▶️ Run the Project

@@ -29,6 +29,13 @@ def _bool_env(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _list_env(name: str, default: list[str]) -> list[str]:
+    value = os.getenv(name)
+    if not value:
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 @dataclass(frozen=True)
 class Settings:
     openai_api_key: str | None
@@ -51,6 +58,8 @@ class Settings:
     external_risk_timeout_seconds: float
     query_cache_enabled: bool
     query_cache_max_size: int
+    max_upload_size_mb: int
+    cors_origins: list[str]
     weather_api_url: str | None
     news_api_url: str | None
     shipping_api_url: str | None
@@ -83,6 +92,10 @@ def get_settings() -> Settings:
         external_risk_timeout_seconds=_float_env("EXTERNAL_RISK_TIMEOUT_SECONDS", 4.0),
         query_cache_enabled=_bool_env("QUERY_CACHE_ENABLED", True),
         query_cache_max_size=_int_env("QUERY_CACHE_MAX_SIZE", 64),
+        max_upload_size_mb=_int_env("MAX_UPLOAD_SIZE_MB", 25),
+        cors_origins=_list_env(
+            "CORS_ORIGINS", ["http://127.0.0.1:5500", "http://localhost:5500"]
+        ),
         weather_api_url=os.getenv("WEATHER_API_URL"),
         news_api_url=os.getenv("NEWS_API_URL"),
         shipping_api_url=os.getenv("SHIPPING_API_URL"),
@@ -103,6 +116,8 @@ def validate_settings(settings: Settings | None = None) -> None:
         missing.append("QA_MODEL")
     if not settings.agent_model:
         missing.append("AGENT_MODEL")
+    if settings.max_upload_size_mb <= 0:
+        missing.append("MAX_UPLOAD_SIZE_MB (> 0)")
 
     if missing:
         joined = ", ".join(missing)
