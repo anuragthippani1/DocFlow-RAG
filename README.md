@@ -39,6 +39,7 @@ Frontend (HTML/JS UI)
 - Automatic text extraction and chunking
 - Embedding generation using OpenRouter
 - Storage in FAISS vector database
+- Incremental ingestion skips unchanged PDFs and appends only new or changed files
 
 ### 🔎 Intelligent Querying
 
