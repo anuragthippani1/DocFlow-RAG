@@ -151,7 +151,7 @@ Useful security/runtime settings:
 
 ## ▶️ Run the Project
 
-### Start Backend
+### Start Backend Locally
 
 ```bash
 ./venv/bin/python -m uvicorn app.main:app --reload
@@ -177,6 +177,24 @@ python3 -m http.server 5500
 ```
 
 Open: `http://127.0.0.1:5500/`
+
+### Docker Setup
+
+Build and run the API plus static frontend:
+
+```bash
+cp .env.example .env
+# edit .env and set OPENAI_API_KEY
+docker compose up --build
+```
+
+Then open:
+
+- Frontend: `http://127.0.0.1:5500/`
+- API docs: `http://127.0.0.1:8000/docs`
+- Health: `http://127.0.0.1:8000/health`
+
+The compose file mounts local `data/` and `db/` folders so uploaded PDFs and FAISS indexes persist across container restarts.
 
 ---
 
