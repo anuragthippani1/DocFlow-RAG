@@ -28,4 +28,4 @@ jobs:
         run: python -c "import app.main; import app.query; import app.ingest"
 
       - name: Run tests
-        run: pytest
+        run: python -m pytest
