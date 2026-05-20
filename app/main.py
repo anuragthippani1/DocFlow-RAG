@@ -1,8 +1,8 @@
 import asyncio
 import os
-import shutil
 import time
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -39,6 +39,7 @@ _start_time = time.time()
 _query_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
 _query_count = 0
 _cache_hits = 0
+UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 class QueryRequest(BaseModel):
@@ -118,12 +119,23 @@ async def _run_agent(
         return default_agent_output(f"{name} failed to analyze the answer: {e}")
 
 
-app = FastAPI(title="DocFlow RAG API")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        validate_settings()
+    except ConfigurationError:
+        logger.exception("Application configuration is invalid")
+        raise
+    yield
+
+
+app = FastAPI(title="DocFlow RAG API", lifespan=lifespan)
+settings = get_settings()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     # So browser JS on another origin (e.g. static UI on :5500) can read custom headers.
@@ -144,15 +156,6 @@ async def timing_middleware(request: Request, call_next: Callable) -> Response:
             "Slow request: %s %s took %.1fms", request.method, request.url.path, elapsed_ms
         )
     return response
-
-
-@app.on_event("startup")
-async def validate_startup_config() -> None:
-    try:
-        validate_settings()
-    except ConfigurationError:
-        logger.exception("Application configuration is invalid")
-        raise
 
 
 def _vector_db_ready() -> bool:
@@ -216,10 +219,23 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     dest_path = DATA_DIR / os.path.basename(file.filename)
+    max_upload_bytes = get_settings().max_upload_size_mb * 1024 * 1024
 
     try:
+        bytes_written = 0
         with dest_path.open("wb") as f:
-            shutil.copyfileobj(file.file, f)
+            while chunk := file.file.read(UPLOAD_CHUNK_SIZE):
+                bytes_written += len(chunk)
+                if bytes_written > max_upload_bytes:
+                    f.close()
+                    dest_path.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Uploaded PDF exceeds {get_settings().max_upload_size_mb} MB limit.",
+                    )
+                f.write(chunk)
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("Failed to save uploaded file %s", file.filename)
         raise HTTPException(status_code=500, detail="Failed to save the uploaded file.")
