@@ -164,8 +164,10 @@ Useful security/runtime settings:
 ### Run Tests
 
 ```bash
-pytest
+python -m pytest
 ```
+
+CI runs the same command on every push to `main` (see `.github/workflows/main.yml`).
 
 ### Start Frontend
 
