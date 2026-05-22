@@ -198,6 +198,47 @@ Then open:
 
 The compose file mounts local `data/` and `db/` folders so uploaded PDFs and FAISS indexes persist across container restarts.
 
+### API Security
+
+Set `API_KEY` in `.env` to require the `X-API-Key` header on `/upload`, `/query`, and `/documents` routes.
+The frontend stores the key in browser localStorage.
+
+### Hybrid Retrieval and Reranking
+
+Enable in `.env`:
+
+```bash
+HYBRID_RETRIEVAL_ENABLED=true
+RERANK_ENABLED=true
+```
+
+Requires `rank-bm25` and `sentence-transformers` (see `requirements.txt`).
+
+### LangSmith Tracing
+
+```bash
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=your_langsmith_key
+LANGCHAIN_PROJECT=docflow-rag
+```
+
+### Evaluation Harness
+
+```bash
+python -m evaluation.runner
+```
+
+Writes `evaluation/reports/latest.json` with Precision@K, Recall@K, MRR, and RAG triad scores.
+
+### Distributed Ingestion (Celery)
+
+```bash
+CELERY_ENABLED=true
+docker compose up --build
+```
+
+Uploads are queued to the `worker` service when Celery is enabled.
+
 ---
 
 ## 🧪 Example Query
@@ -215,8 +256,7 @@ What problem does GRAIL solve?
 
 ## 🚀 Future Improvements
 
-- Hybrid retrieval (vector + keyword search)
-- React-based frontend
+- React-based frontend (current UI is modular vanilla JS)
 - Persistent query analytics dashboard
 - Exportable PDF/JSON risk reports
 - Authentication and team workspaces

@@ -506,3 +506,38 @@
         align-items: center;
         gap: 8px;
       }
+
+      .skeleton {
+        background: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.06) 25%,
+          rgba(255, 255, 255, 0.14) 50%,
+          rgba(255, 255, 255, 0.06) 75%
+        );
+        background-size: 200% 100%;
+        animation: skeleton-pulse 1.2s ease-in-out infinite;
+        border-radius: 8px;
+        min-height: 14px;
+      }
+
+      @keyframes skeleton-pulse {
+        0% {
+          background-position: 200% 0;
+        }
+        100% {
+          background-position: -200% 0;
+        }
+      }
+
+      .settings-panel {
+        margin-top: 14px;
+      }
+
+      .error-state {
+        border: 1px solid rgba(255, 107, 107, 0.45);
+        background: rgba(255, 107, 107, 0.08);
+        border-radius: 12px;
+        padding: 10px 12px;
+        color: rgba(255, 107, 107, 0.95);
+        font-size: 13px;
+      }
