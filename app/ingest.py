@@ -14,6 +14,8 @@ if __package__ is None or __package__ == "":
 
 from app.config import get_settings, openrouter_headers
 from app.db_utils import vector_db_ready
+from app.entity_extractor import extract_entities
+from app.graph import get_graph_store
 from app.logging_utils import get_logger
 
 load_dotenv()
@@ -174,6 +176,12 @@ def ingest_documents():
                 doc.metadata.update(signature)
             documents.extend(loaded_docs)
             logger.info("Loaded PDF: %s (%s pages)", pdf_path.name, len(loaded_docs))
+            if settings.graph_extraction_enabled:
+                combined_text = "\n".join(
+                    str(getattr(doc, "page_content", "")) for doc in loaded_docs
+                )
+                extraction = extract_entities(combined_text, pdf_path.name)
+                get_graph_store().upsert_extraction(extraction)
         except Exception as e:
             logger.warning("Error loading %s: %s", pdf_path.name, e)
 

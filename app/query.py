@@ -12,9 +12,12 @@ if __package__ is None or __package__ == "":
 
 from app.agent import analyze_response
 from app.config import get_settings, openrouter_headers
+from app.observability import configure_langsmith
+from app.retrievers import build_retriever
 
 
 load_dotenv()
+configure_langsmith()
 
 
 def build_qa_chain() -> RetrievalQA:
@@ -31,14 +34,7 @@ def build_qa_chain() -> RetrievalQA:
     vectorstore = FAISS.load_local(
         settings.db_path, embeddings, allow_dangerous_deserialization=True
     )
-    retriever = vectorstore.as_retriever(
-        search_type="mmr",
-        search_kwargs={
-            "k": settings.retriever_k,
-            "fetch_k": settings.retriever_fetch_k,
-            "lambda_mult": 0.65,
-        },
-    )
+    retriever = build_retriever(vectorstore, settings)
 
     llm = ChatOpenAI(
         model=settings.qa_model,
