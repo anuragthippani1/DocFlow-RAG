@@ -26,11 +26,14 @@ from app.config import ConfigurationError, get_settings, validate_settings
 from app.db_utils import vector_db_ready
 from app.external_risk import fetch_external_risk_context
 from app.ingest import delete_document, force_reindex, ingest_documents
+from app.status import DocumentStatus, list_document_statuses, set_document_status
 from app.logging_utils import get_logger
+from app.observability import configure_langsmith
 from app.query import build_qa_chain
 
 
 load_dotenv()
+configure_langsmith()
 
 # Bump when releasing meaningful API or behavior changes.
 APP_VERSION = "1.3.0"
@@ -222,7 +225,31 @@ async def list_documents():
     pdfs = sorted(
         f.name for f in DATA_DIR.iterdir() if f.is_file() and f.name.lower().endswith(".pdf")
     )
-    return {"count": len(pdfs), "documents": pdfs}
+    return {
+        "count": len(pdfs),
+        "documents": pdfs,
+        "statuses": list_document_statuses(),
+    }
+
+
+@app.get("/status")
+async def ingestion_status():
+    return {"documents": list_document_statuses()}
+
+
+@app.get("/metrics")
+async def metrics():
+    uptime_seconds = round(time.time() - _start_time, 1)
+    return {
+        "version": APP_VERSION,
+        "uptime_seconds": uptime_seconds,
+        "total_queries": _query_count,
+        "cache_hits": _cache_hits,
+        "cache_size": len(_query_cache),
+        "hybrid_retrieval_enabled": get_settings().hybrid_retrieval_enabled,
+        "rerank_enabled": get_settings().rerank_enabled,
+        "celery_enabled": get_settings().celery_enabled,
+    }
 
 
 @app.post("/cache/clear")
@@ -286,20 +313,38 @@ async def upload_pdf(file: UploadFile = File(...)):
         except Exception:
             pass
 
+    settings = get_settings()
+    set_document_status(dest_path.name, DocumentStatus.QUEUED, "Upload saved")
+
     try:
-        # Ingestion can be CPU/network heavy; avoid blocking the event loop.
+        if settings.celery_enabled:
+            from workers.tasks import ingest_document_task
+
+            ingest_document_task.delay(dest_path.name)
+            return {
+                "message": "Upload queued for background ingestion.",
+                "filename": dest_path.name,
+                "status": DocumentStatus.QUEUED.value,
+            }
+
+        set_document_status(dest_path.name, DocumentStatus.PROCESSING, "Ingesting")
         await run_in_threadpool(ingest_documents)
-        # Vector DB changed; rebuild the cached chain on next query.
+        set_document_status(dest_path.name, DocumentStatus.DONE, "Ingestion completed")
         get_qa.cache_clear()
         _clear_query_cache()
-    except Exception:
+    except Exception as exc:
+        set_document_status(dest_path.name, DocumentStatus.FAILED, str(exc))
         logger.exception("Ingestion failed for %s", file.filename)
         raise HTTPException(
             status_code=500,
             detail="Document ingestion failed. Ensure the PDF is valid and try again.",
         )
 
-    return {"message": "Upload successful. Vector DB updated.", "filename": dest_path.name}
+    return {
+        "message": "Upload successful. Vector DB updated.",
+        "filename": dest_path.name,
+        "status": DocumentStatus.DONE.value,
+    }
 
 
 @app.post("/query")

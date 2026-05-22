@@ -1,0 +1,16 @@
+[
+  {
+    "question": "What are the main supply chain risks?",
+    "retrieved_sources": ["risk-report.pdf", "supplier-audit.pdf"],
+    "relevant_sources": ["risk-report.pdf"],
+    "predicted_answer": "Supplier delays and inventory shortages increase operational risk.",
+    "expected_answer": "Supplier delays inventory shortages operational risk"
+  },
+  {
+    "question": "Summarize logistics exposure.",
+    "retrieved_sources": ["logistics-brief.pdf"],
+    "relevant_sources": ["logistics-brief.pdf", "risk-report.pdf"],
+    "predicted_answer": "Port congestion is causing shipment delays.",
+    "expected_answer": "Port congestion shipment delays logistics"
+  }
+]
