@@ -61,6 +61,70 @@ def _delete_file_documents(vectorstore: FAISS, file_name: str) -> None:
         vectorstore.delete(ids_to_delete)
 
 
+def _load_vectorstore(embeddings: OpenAIEmbeddings, db_path: str) -> FAISS | None:
+    if not vector_db_ready(db_path):
+        return None
+    return FAISS.load_local(db_path, embeddings, allow_dangerous_deserialization=True)
+
+
+def _save_or_remove_vectorstore(vectorstore: FAISS | None, db_path: str) -> None:
+    db_dir = Path(db_path)
+    if vectorstore is None or not _docstore_items(vectorstore):
+        for name in ("index.faiss", "index.pkl"):
+            file_path = db_dir / name
+            if file_path.is_file():
+                file_path.unlink()
+        return
+    vectorstore.save_local(db_path)
+
+
+def delete_document(filename: str) -> dict[str, Any]:
+    """Remove a PDF from disk and delete its chunks from the vector index."""
+    settings = get_settings()
+    data_path = Path(settings.data_path)
+    safe_name = Path(filename).name
+    if not safe_name.lower().endswith(".pdf"):
+        raise ValueError("Only PDF documents can be deleted.")
+
+    pdf_path = data_path / safe_name
+    if not pdf_path.is_file():
+        raise FileNotFoundError(f"Document not found: {safe_name}")
+
+    embeddings = OpenAIEmbeddings(
+        model=settings.embedding_model,
+        api_key=settings.openai_api_key,
+        base_url=settings.openai_api_base,
+        default_headers=openrouter_headers(),
+    )
+    vectorstore = _load_vectorstore(embeddings, settings.db_path)
+    if vectorstore is not None:
+        _delete_file_documents(vectorstore, safe_name)
+        _save_or_remove_vectorstore(vectorstore, settings.db_path)
+
+    pdf_path.unlink()
+    logger.info("Deleted document: %s", safe_name)
+    return {"message": f"Deleted {safe_name}.", "filename": safe_name}
+
+
+def force_reindex() -> dict[str, Any]:
+    """Rebuild the vector index from all PDFs in the data folder."""
+    settings = get_settings()
+    db_dir = Path(settings.db_path)
+    if db_dir.exists():
+        for name in ("index.faiss", "index.pkl"):
+            file_path = db_dir / name
+            if file_path.is_file():
+                file_path.unlink()
+    ingest_documents()
+    indexed = sorted(
+        p.name
+        for p in Path(settings.data_path).iterdir()
+        if p.is_file() and p.name.lower().endswith(".pdf")
+    )
+    logger.info("Force re-index completed for %s documents", len(indexed))
+    return {"message": "Vector index rebuilt.", "documents": indexed, "count": len(indexed)}
+
+
 def ingest_documents():
     settings = get_settings()
     data_path = Path(settings.data_path)

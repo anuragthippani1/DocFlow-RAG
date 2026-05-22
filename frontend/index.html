@@ -507,6 +507,13 @@
         background: rgba(110, 231, 255, 0.1);
         color: var(--text);
       }
+
+      .doc-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+      }
     </style>
   </head>
   <body>
@@ -529,7 +536,15 @@
           </div>
           <div id="uploadStatus" class="status" role="status" aria-live="polite"></div>
           <div id="docCountPill" class="pill" style="margin-top: 10px"></div>
+          <div class="row" style="margin-bottom: 8px">
+            <button id="reindexBtn" class="secondary" type="button">Force Re-index</button>
+          </div>
           <ul id="docList" class="doc-list"></ul>
+          <div class="row" style="margin-top: 10px">
+            <label for="apiKeyInput">API Key</label>
+            <input id="apiKeyInput" type="password" placeholder="X-API-Key (if enabled)" style="flex: 1" />
+            <button id="saveApiKeyBtn" class="secondary" type="button">Save</button>
+          </div>
         </section>
 
         <section class="card" aria-label="Ask a question">
@@ -676,6 +691,24 @@
       }
 
       const API_BASE = resolveApiBase();
+      const API_KEY_STORAGE = "docflow_api_key";
+
+      function getApiKey() {
+        return localStorage.getItem(API_KEY_STORAGE) || "";
+      }
+
+      function apiHeaders(extra = {}) {
+        const headers = { ...extra };
+        const key = getApiKey();
+        if (key) headers["X-API-Key"] = key;
+        return headers;
+      }
+
+      async function apiFetch(path, options = {}) {
+        const headers = apiHeaders(options.headers || {});
+        return fetch(`${API_BASE}${path}`, { ...options, headers });
+      }
+
       const dashboardState = {
         totalQueries: 0,
         riskCounts: {
@@ -760,7 +793,7 @@
         pill.textContent = `API: checking ${API_BASE}`;
 
         try {
-          const res = await fetch(`${API_BASE}/health`);
+          const res = await apiFetch("/health");
           if (!res.ok) throw new Error(`Health check failed (${res.status})`);
           const data = await safeJson(res);
           const version = data?.version ? ` v${data.version}` : "";
@@ -777,7 +810,7 @@
         const el = $("cacheHitRate");
         if (!el) return;
         try {
-          const res = await fetch(`${API_BASE}/stats`);
+          const res = await apiFetch("/stats");
           if (!res.ok) throw new Error("stats unavailable");
           const data = await safeJson(res);
           const total = data?.total_queries ?? 0;
@@ -797,7 +830,7 @@
       async function clearServerCache() {
         const status = $("queryStatus");
         try {
-          const res = await fetch(`${API_BASE}/cache/clear`, { method: "POST" });
+          const res = await apiFetch("/cache/clear", { method: "POST" });
           const data = await safeJson(res);
           if (!res.ok) {
             throw new Error(data?.detail || `Clear failed (${res.status})`);
@@ -814,7 +847,7 @@
         const list = $("docList");
         if (!pill) return;
         try {
-          const res = await fetch(`${API_BASE}/documents`);
+          const res = await apiFetch("/documents");
           if (!res.ok) throw new Error("documents unavailable");
           const data = await safeJson(res);
           const docs = Array.isArray(data?.documents) ? data.documents : [];
@@ -829,7 +862,17 @@
             } else {
               for (const name of docs) {
                 const li = document.createElement("li");
-                li.textContent = name;
+                li.className = "doc-item";
+                const label = document.createElement("span");
+                label.textContent = name;
+                const del = document.createElement("button");
+                del.type = "button";
+                del.className = "secondary";
+                del.style.fontSize = "11px";
+                del.textContent = "Delete";
+                del.addEventListener("click", () => deleteDocument(name));
+                li.appendChild(label);
+                li.appendChild(del);
                 list.appendChild(li);
               }
             }
@@ -917,6 +960,37 @@
         }
       }
 
+      async function deleteDocument(filename) {
+        const status = $("uploadStatus");
+        if (!confirm(`Delete ${filename} from the index?`)) return;
+        setProcessing(status, "Deleting document...");
+        try {
+          const res = await apiFetch(`/documents/${encodeURIComponent(filename)}`, {
+            method: "DELETE",
+          });
+          const data = await safeJson(res);
+          if (!res.ok) throw new Error(data?.detail || `Delete failed (${res.status})`);
+          setStatus(status, data?.message || "Document deleted.", "ok");
+          await refreshDocuments();
+        } catch (e) {
+          setStatus(status, `Delete error: ${e?.message || e}`, "err");
+        }
+      }
+
+      async function forceReindex() {
+        const status = $("uploadStatus");
+        setProcessing(status, "Rebuilding vector index...");
+        try {
+          const res = await apiFetch("/documents/reindex", { method: "POST" });
+          const data = await safeJson(res);
+          if (!res.ok) throw new Error(data?.detail || `Re-index failed (${res.status})`);
+          setStatus(status, data?.message || "Re-index complete.", "ok");
+          await refreshDocuments();
+        } catch (e) {
+          setStatus(status, `Re-index error: ${e?.message || e}`, "err");
+        }
+      }
+
       async function uploadPdf() {
         const file = $("pdfFile").files?.[0];
         const status = $("uploadStatus");
@@ -938,7 +1012,7 @@
           const form = new FormData();
           form.append("file", file);
 
-          const res = await fetch(`${API_BASE}/upload`, {
+          const res = await apiFetch("/upload", {
             method: "POST",
             body: form,
           });
@@ -1038,7 +1112,7 @@
         const t0 = performance.now();
 
         try {
-          const res = await fetch(`${API_BASE}/query`, {
+          const res = await apiFetch("/query", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ question: q }),
@@ -1076,6 +1150,12 @@
 
       $("apiBasePill").textContent = `API: ${API_BASE}`;
 
+      $("apiKeyInput").value = getApiKey();
+      $("saveApiKeyBtn").addEventListener("click", () => {
+        localStorage.setItem(API_KEY_STORAGE, $("apiKeyInput").value.trim());
+        setStatus($("uploadStatus"), "API key saved for this browser.", "ok");
+      });
+      $("reindexBtn").addEventListener("click", forceReindex);
       $("uploadBtn").addEventListener("click", uploadPdf);
       $("askBtn").addEventListener("click", askQuestion);
       $("resetDashboardBtn").addEventListener("click", resetDashboard);
