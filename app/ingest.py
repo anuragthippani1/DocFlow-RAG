@@ -13,16 +13,12 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import get_settings, openrouter_headers
+from app.db_utils import vector_db_ready
 from app.logging_utils import get_logger
 
 load_dotenv()
 
 logger = get_logger(__name__)
-
-
-def _vector_db_exists(db_path: str) -> bool:
-    db_dir = Path(db_path)
-    return (db_dir / "index.faiss").is_file() and (db_dir / "index.pkl").is_file()
 
 
 def _docstore_items(vectorstore: FAISS) -> list[tuple[str, Any]]:
@@ -81,7 +77,7 @@ def ingest_documents():
 
     vectorstore = None
     indexed_signatures: dict[str, dict[str, int | None]] = {}
-    if _vector_db_exists(settings.db_path):
+    if vector_db_ready(settings.db_path):
         vectorstore = FAISS.load_local(
             settings.db_path, embeddings, allow_dangerous_deserialization=True
         )

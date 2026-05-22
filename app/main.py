@@ -22,6 +22,7 @@ from app.agents.inventory_agent import analyze_inventory_async
 from app.agents.logistics_agent import analyze_logistics_async
 from app.agents.supplier_agent import analyze_supplier_async
 from app.config import ConfigurationError, get_settings, validate_settings
+from app.db_utils import vector_db_ready
 from app.external_risk import fetch_external_risk_context
 from app.ingest import ingest_documents
 from app.logging_utils import get_logger
@@ -158,15 +159,9 @@ async def timing_middleware(request: Request, call_next: Callable) -> Response:
     return response
 
 
-def _vector_db_ready() -> bool:
-    settings = get_settings()
-    db_dir = Path(settings.db_path)
-    return (db_dir / "index.faiss").is_file() and (db_dir / "index.pkl").is_file()
-
-
 @app.get("/health")
 async def health_check():
-    ready = _vector_db_ready()
+    ready = vector_db_ready(get_settings().db_path)
     return {
         "status": "ok" if ready else "degraded",
         "service": "DocFlow RAG API",
@@ -272,7 +267,7 @@ async def query_rag(payload: QueryRequest):
     try:
         _query_count += 1
 
-        if not _vector_db_ready():
+        if not vector_db_ready(get_settings().db_path):
             return JSONResponse(
                 status_code=503,
                 content={"error": "No vector database found. Upload documents first."},

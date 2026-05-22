@@ -43,7 +43,7 @@ async def fake_external_context(_question):
 
 
 def patch_query_dependencies(monkeypatch, qa):
-    monkeypatch.setattr(main, "_vector_db_ready", lambda: True)
+    monkeypatch.setattr(main, "vector_db_ready", lambda _path: True)
     monkeypatch.setattr(main, "get_qa", lambda: qa)
     monkeypatch.setattr(main, "fetch_external_risk_context", fake_external_context)
     monkeypatch.setattr(main, "analyze_supplier_async", fake_agent)
@@ -54,7 +54,7 @@ def patch_query_dependencies(monkeypatch, qa):
 
 
 def test_query_returns_503_when_vector_db_missing(client, monkeypatch):
-    monkeypatch.setattr(main, "_vector_db_ready", lambda: False)
+    monkeypatch.setattr(main, "vector_db_ready", lambda _path: False)
 
     response = client.post("/query", json={"question": "What changed?"})
 
