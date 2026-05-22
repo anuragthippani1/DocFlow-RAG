@@ -15,6 +15,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
+from app.agent_router import (
+    agents_for_domain,
+    detect_domain,
+    skipped_agent_output,
+)
 from app.auth import APIKeyMiddleware, RateLimitMiddleware
 from app.agents._common import AgentOutput, default_agent_output
 from app.agents.decision_agent import generate_final_decision_async
@@ -36,7 +41,7 @@ load_dotenv()
 configure_langsmith()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
@@ -249,6 +254,8 @@ async def metrics():
         "hybrid_retrieval_enabled": get_settings().hybrid_retrieval_enabled,
         "rerank_enabled": get_settings().rerank_enabled,
         "celery_enabled": get_settings().celery_enabled,
+        "graph_extraction_enabled": get_settings().graph_extraction_enabled,
+        "langsmith_tracing": get_settings().langsmith_tracing,
     }
 
 
@@ -378,15 +385,37 @@ async def query_rag(payload: QueryRequest):
         if not answer or not sources:
             answer = answer or "No relevant document context was found for this question."
 
+        domain = detect_domain(sources, answer)
+        run_flags = agents_for_domain(domain)
+        logger.info("Agent routing domain=%s flags=%s sources=%s", domain, run_flags, sources)
+
         external_context = await fetch_external_risk_context(question)
+
+        async def _maybe_supplier() -> AgentOutput:
+            if not run_flags["supplier"]:
+                return skipped_agent_output("Supplier Agent", domain)
+            return await analyze_supplier_async(answer)
+
+        async def _maybe_inventory() -> AgentOutput:
+            if not run_flags["inventory"]:
+                return skipped_agent_output("Inventory Agent", domain)
+            return await analyze_inventory_async(answer)
+
+        async def _maybe_logistics() -> AgentOutput:
+            if not run_flags["logistics"]:
+                return skipped_agent_output("Logistics Agent", domain)
+            return await analyze_logistics_async(answer)
+
+        async def _maybe_external() -> AgentOutput:
+            if not run_flags["external_risk"]:
+                return skipped_agent_output("External Risk Agent", domain)
+            return await analyze_external_risk_async(answer, external_context)
+
         supplier, inventory, logistics, external_risk = await asyncio.gather(
-            _run_agent("Supplier Agent", lambda: analyze_supplier_async(answer)),
-            _run_agent("Inventory Agent", lambda: analyze_inventory_async(answer)),
-            _run_agent("Logistics Agent", lambda: analyze_logistics_async(answer)),
-            _run_agent(
-                "External Risk Agent",
-                lambda: analyze_external_risk_async(answer, external_context),
-            ),
+            _run_agent("Supplier Agent", _maybe_supplier),
+            _run_agent("Inventory Agent", _maybe_inventory),
+            _run_agent("Logistics Agent", _maybe_logistics),
+            _run_agent("External Risk Agent", _maybe_external),
         )
         agents: dict[str, AgentOutput] = {
             "supplier": supplier,
@@ -394,6 +423,7 @@ async def query_rag(payload: QueryRequest):
             "logistics": logistics,
             "external_risk": external_risk,
         }
+        agents_run = [name for name, enabled in run_flags.items() if enabled]
         decision_inputs: list[dict[str, Any]] = [
             {"agent": agent_name, **agent_output}
             for agent_name, agent_output in agents.items()
@@ -404,6 +434,8 @@ async def query_rag(payload: QueryRequest):
             "agents": agents,
             "decision": decision,
             "sources": sources,
+            "domain": domain,
+            "agents_run": agents_run,
         }
         _set_cached_response(question, response)
         return JSONResponse(content=response, headers={"X-Cache": "MISS"})

@@ -74,6 +74,8 @@ def test_query_endpoint_returns_agent_response(client, monkeypatch):
     assert payload["answer"] == "Answer for What changed?"
     assert payload["sources"] == ["sample.pdf"]
     assert payload["decision"]["final_risk"] == "Low"
+    assert payload.get("domain") in {"general", "research", "supply_chain"}
+    assert "agents_run" in payload
     assert qa.calls == 1
 
 

@@ -203,29 +203,40 @@ const $ = (id) => document.getElementById(id);
         }
       }
 
-      function renderAgent(prefix, data) {
+      function renderAgent(agentKey, prefix, data) {
         const agent = data || {};
-        setRiskBadge(`${prefix}Risk`, agent.risk_level);
+        const skipped = String(agent.reason || "").toLowerCase().includes("skipped");
+        const card = document.querySelector(`[data-agent="${agentKey}"]`);
+        if (card) card.classList.toggle("agent-skipped", skipped);
+        setRiskBadge(`${prefix}Risk`, skipped ? "" : agent.risk_level);
         $(`${prefix}Reason`).textContent = agent.reason || "No reason returned.";
         $(`${prefix}Action`).textContent = agent.recommended_action || "No action returned.";
       }
 
       function renderResult(payload) {
-        const answer = payload?.answer ?? "";
+        const answer = (payload?.answer ?? "").trim().replace(/\n{3,}/g, "\n\n");
         const agents = payload?.agents ?? {};
         const decision = payload?.decision ?? {};
         const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+        const domain = payload?.domain || "general";
+        const agentsRun = Array.isArray(payload?.agents_run) ? payload.agents_run.join(", ") : "";
 
         $("answerText").textContent = answer || "No answer returned.";
+        const modePill = $("queryModePill");
+        if (modePill) {
+          modePill.textContent = agentsRun
+            ? `Domain: ${domain} · Agents: ${agentsRun}`
+            : `Domain: ${domain}`;
+        }
         setRiskBadge("decisionRisk", decision.final_risk);
         $("decisionText").textContent = decision.final_decision || "No final decision returned.";
         $("priorityAction").textContent = decision.priority_action || "No priority action returned.";
         updateDashboard(decision);
 
-        renderAgent("supplier", agents.supplier);
-        renderAgent("inventory", agents.inventory);
-        renderAgent("logistics", agents.logistics);
-        renderAgent("externalRisk", agents.external_risk);
+        renderAgent("supplier", "supplier", agents.supplier);
+        renderAgent("inventory", "inventory", agents.inventory);
+        renderAgent("logistics", "logistics", agents.logistics);
+        renderAgent("external_risk", "externalRisk", agents.external_risk);
 
         const ul = $("sourcesList");
         ul.innerHTML = "";
