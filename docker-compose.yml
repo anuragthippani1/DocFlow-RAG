@@ -1,4 +1,14 @@
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   api:
     build: .
     env_file:
@@ -7,11 +17,40 @@ services:
       DATA_PATH: /app/data
       DB_PATH: /app/db
       CORS_ORIGINS: http://127.0.0.1:5500,http://localhost:5500
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     volumes:
       - ./data:/app/data
       - ./db:/app/db
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+  worker:
+    build: .
+    command: celery -A workers.celery_app worker --loglevel=info
+    env_file:
+      - .env
+    environment:
+      DATA_PATH: /app/data
+      DB_PATH: /app/db
+      REDIS_URL: redis://redis:6379/0
+      CELERY_ENABLED: "true"
+    volumes:
+      - ./data:/app/data
+      - ./db:/app/db
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
 
   frontend:
     image: python:3.12-slim
@@ -22,4 +61,5 @@ services:
     volumes:
       - ./frontend:/frontend:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy

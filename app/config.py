@@ -63,6 +63,22 @@ class Settings:
     weather_api_url: str | None
     news_api_url: str | None
     shipping_api_url: str | None
+    api_key: str | None
+    rate_limit_per_minute: int
+    max_question_length: int
+    hybrid_retrieval_enabled: bool
+    rerank_enabled: bool
+    bm25_fetch_k: int
+    rerank_top_n: int
+    langsmith_tracing: bool
+    langsmith_api_key: str | None
+    langsmith_project: str
+    neo4j_uri: str | None
+    neo4j_user: str | None
+    neo4j_password: str | None
+    graph_extraction_enabled: bool
+    celery_enabled: bool
+    redis_url: str
 
 
 class ConfigurationError(RuntimeError):
@@ -99,6 +115,22 @@ def get_settings() -> Settings:
         weather_api_url=os.getenv("WEATHER_API_URL"),
         news_api_url=os.getenv("NEWS_API_URL"),
         shipping_api_url=os.getenv("SHIPPING_API_URL"),
+        api_key=os.getenv("API_KEY") or None,
+        rate_limit_per_minute=_int_env("RATE_LIMIT_PER_MINUTE", 60),
+        max_question_length=_int_env("MAX_QUESTION_LENGTH", 2000),
+        hybrid_retrieval_enabled=_bool_env("HYBRID_RETRIEVAL_ENABLED", False),
+        rerank_enabled=_bool_env("RERANK_ENABLED", False),
+        bm25_fetch_k=_int_env("BM25_FETCH_K", 20),
+        rerank_top_n=_int_env("RERANK_TOP_N", 8),
+        langsmith_tracing=_bool_env("LANGCHAIN_TRACING_V2", False),
+        langsmith_api_key=os.getenv("LANGCHAIN_API_KEY") or os.getenv("LANGSMITH_API_KEY"),
+        langsmith_project=os.getenv("LANGCHAIN_PROJECT", "docflow-rag"),
+        neo4j_uri=os.getenv("NEO4J_URI"),
+        neo4j_user=os.getenv("NEO4J_USER"),
+        neo4j_password=os.getenv("NEO4J_PASSWORD"),
+        graph_extraction_enabled=_bool_env("GRAPH_EXTRACTION_ENABLED", False),
+        celery_enabled=_bool_env("CELERY_ENABLED", False),
+        redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
     )
 
 

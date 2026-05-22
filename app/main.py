@@ -12,9 +12,10 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.responses import Response
 
+from app.auth import APIKeyMiddleware, RateLimitMiddleware
 from app.agents._common import AgentOutput, default_agent_output
 from app.agents.decision_agent import generate_final_decision_async
 from app.agents.external_risk_agent import analyze_external_risk_async
@@ -24,7 +25,7 @@ from app.agents.supplier_agent import analyze_supplier_async
 from app.config import ConfigurationError, get_settings, validate_settings
 from app.db_utils import vector_db_ready
 from app.external_risk import fetch_external_risk_context
-from app.ingest import ingest_documents
+from app.ingest import delete_document, force_reindex, ingest_documents
 from app.logging_utils import get_logger
 from app.query import build_qa_chain
 
@@ -32,7 +33,7 @@ from app.query import build_qa_chain
 load_dotenv()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.2.6"
+APP_VERSION = "1.3.0"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
@@ -44,7 +45,20 @@ UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 class QueryRequest(BaseModel):
-    question: str
+    question: str = Field(..., min_length=1, max_length=2000)
+
+
+def _validated_question(payload: QueryRequest) -> str:
+    max_len = get_settings().max_question_length
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+    if len(question) > max_len:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Question exceeds maximum length of {max_len} characters.",
+        )
+    return question
 
 
 @lru_cache(maxsize=1)
@@ -133,12 +147,14 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="DocFlow RAG API", lifespan=lifespan)
 settings = get_settings()
 
+app.add_middleware(RateLimitMiddleware, limit_per_minute=settings.rate_limit_per_minute)
+app.add_middleware(APIKeyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "X-API-Key"],
     # So browser JS on another origin (e.g. static UI on :5500) can read custom headers.
     expose_headers=["X-Response-Time", "X-Cache"],
 )
@@ -168,6 +184,36 @@ async def health_check():
         "version": APP_VERSION,
         "vector_db_ready": ready,
     }
+
+
+@app.delete("/documents/{filename}")
+async def remove_document(filename: str):
+    try:
+        result = await run_in_threadpool(delete_document, filename)
+        get_qa.cache_clear()
+        _clear_query_cache()
+        return result
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Failed to delete document %s", filename)
+        raise HTTPException(status_code=500, detail="Failed to delete document.")
+
+
+@app.post("/documents/reindex")
+async def reindex_documents():
+    try:
+        result = await run_in_threadpool(force_reindex)
+        get_qa.cache_clear()
+        _clear_query_cache()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Force re-index failed")
+        raise HTTPException(status_code=500, detail="Failed to rebuild vector index.")
 
 
 @app.get("/documents")
@@ -258,9 +304,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 
 @app.post("/query")
 async def query_rag(payload: QueryRequest):
-    question = payload.question.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+    question = _validated_question(payload)
 
     global _query_count, _cache_hits
 
