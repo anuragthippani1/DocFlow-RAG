@@ -17,6 +17,8 @@ env/
 
 # Vector DB (generated at runtime)
 db/
+data/.ingestion_status.json
+evaluation/reports/
 
 # IDE
 .vscode/
