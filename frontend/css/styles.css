@@ -26,9 +26,9 @@
       }
 
       .container {
-        max-width: 980px;
+        max-width: 1100px;
         margin: 0 auto;
-        padding: 32px 16px 60px;
+        padding: 24px 16px 48px;
       }
 
       header {
@@ -178,15 +178,16 @@
       }
 
       .output {
-        margin-top: 14px;
+        margin-top: 16px;
         display: grid;
         grid-template-columns: 1fr;
-        gap: 12px;
+        gap: 14px;
+        align-items: start;
       }
 
       @media (min-width: 900px) {
         .output {
-          grid-template-columns: 1.2fr 0.8fr;
+          grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
         }
       }
 
@@ -195,6 +196,8 @@
         border: 1px solid var(--border);
         border-radius: 16px;
         padding: 14px;
+        min-width: 0;
+        overflow: hidden;
       }
 
       .panel h3 {
@@ -204,32 +207,19 @@
       }
 
       .dashboard {
-        margin-top: 14px;
+        margin-top: 16px;
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
         gap: 12px;
-      }
-
-      @media (min-width: 900px) {
-        .dashboard {
-          grid-template-columns: repeat(4, 1fr);
-        }
+        align-items: stretch;
       }
 
       .metric-card {
         background: var(--card2);
         border: 1px solid var(--border);
         border-radius: 16px;
-        padding: 14px;
-      }
-
-      .dashboard-actions {
-        display: flex;
-        align-items: end;
-      }
-
-      .dashboard-actions button {
-        width: 100%;
+        padding: 12px 14px;
+        min-width: 0;
       }
 
       .dashboard-actions {
@@ -237,6 +227,10 @@
         flex-direction: column;
         gap: 8px;
         justify-content: center;
+      }
+
+      .dashboard-actions button {
+        width: 100%;
       }
 
       .metric-label {
@@ -272,9 +266,22 @@
 
       .text {
         white-space: pre-wrap;
-        line-height: 1.55;
-        color: rgba(255, 255, 255, 0.9);
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.94);
         font-size: 14px;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      #answerText {
+        min-height: 2.5em;
+        max-height: 420px;
+        overflow-y: auto;
+      }
+
+      #decisionText,
+      #priorityAction {
+        min-height: 1.2em;
       }
 
       ul {
@@ -311,6 +318,17 @@
         border-radius: 14px;
         padding: 12px;
         background: rgba(0, 0, 0, 0.16);
+        min-width: 0;
+      }
+
+      .agent-card.agent-skipped {
+        opacity: 0.55;
+        border-style: dashed;
+      }
+
+      .agent-card.agent-skipped .text {
+        color: var(--muted);
+        font-size: 13px;
       }
 
       .agent-card h4 {
@@ -530,7 +548,11 @@
       }
 
       .settings-panel {
-        margin-top: 14px;
+        margin-bottom: 14px;
+      }
+
+      .card + .grid {
+        margin-top: 0;
       }
 
       .error-state {
