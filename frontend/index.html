@@ -665,7 +665,17 @@
     </div>
 
     <script>
-      const API_BASE = "http://127.0.0.1:8000";
+      function resolveApiBase() {
+        const params = new URLSearchParams(window.location.search);
+        const override = params.get("api");
+        if (override) return override.replace(/\/$/, "");
+        const { protocol, hostname, port } = window.location;
+        if (port === "5500") return `${protocol}//${hostname}:8000`;
+        if (port === "8000") return `${protocol}//${hostname}:8000`;
+        return "http://127.0.0.1:8000";
+      }
+
+      const API_BASE = resolveApiBase();
       const dashboardState = {
         totalQueries: 0,
         riskCounts: {
@@ -1039,8 +1049,11 @@
 
           const data = await safeJson(res);
           if (!res.ok) {
+            if (res.status === 503 && data?.error) {
+              throw new Error(data.error);
+            }
             const detail = data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data);
-            throw new Error(detail || `Query failed (${res.status})`);
+            throw new Error(detail || data?.error || `Query failed (${res.status})`);
           }
 
           renderResult(data);
