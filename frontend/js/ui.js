@@ -404,6 +404,7 @@ const $ = (id) => document.getElementById(id);
 
         setLoading(btn, true, "Submit");
         setProcessing(status, "Processing question...");
+        $("answerText").innerHTML = '<div class="skeleton" style="height:72px"></div>';
         $("responseMeta").style.display = "none";
 
         const t0 = performance.now();
