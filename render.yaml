@@ -1,0 +1,49 @@
+# Render Blueprint — DocFlow RAG
+# https://render.com/docs/blueprint-spec
+#
+# Deploy: Dashboard → New → Blueprint → connect this repo
+# After deploy: set CORS_ORIGINS on docflow-api to your UI URL(s), e.g.
+#   https://docflow-ui.onrender.com
+
+services:
+  - type: web
+    name: docflow-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_API_BASE
+        value: https://openrouter.ai/api/v1
+      - key: API_KEY
+        generateValue: true
+      - key: DATA_PATH
+        value: /var/data/data
+      - key: DB_PATH
+        value: /var/data/db
+      - key: CELERY_ENABLED
+        value: "false"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: OPENROUTER_SITE_URL
+        fromService:
+          type: web
+          name: docflow-ui
+          envVarKey: RENDER_EXTERNAL_URL
+    disk:
+      name: docflow-storage
+      mountPath: /var/data
+      sizeGB: 1
+
+  - type: web
+    name: docflow-ui
+    runtime: static
+    staticPublishPath: ./frontend
+    buildCommand: ""
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
