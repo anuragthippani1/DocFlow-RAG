@@ -10,6 +10,9 @@ function resolveApiBase() {
   const { protocol, hostname, port } = window.location;
   if (port === "5500") return `${protocol}//${hostname}:8000`;
   if (port === "8000") return `${protocol}//${hostname}:8000`;
+  if (hostname.endsWith(".onrender.com") && hostname.includes("docflow-ui")) {
+    return `${protocol}//docflow-api.onrender.com`;
+  }
   return "http://127.0.0.1:8000";
 }
 
