@@ -41,7 +41,7 @@ load_dotenv()
 configure_langsmith()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.2"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
