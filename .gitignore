@@ -23,6 +23,7 @@ evaluation/reports/
 # IDE
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
 
