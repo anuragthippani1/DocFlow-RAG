@@ -155,7 +155,7 @@ def validate_settings(settings: Settings | None = None) -> None:
         joined = ", ".join(missing)
         raise ConfigurationError(
             f"Missing required configuration: {joined}. "
-            "Copy .env.example to .env and fill in the required values."
+            "Create a local .env file with the required values (do not commit it)."
         )
 
 

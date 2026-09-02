@@ -124,28 +124,24 @@ pip install -r requirements.txt
 
 ## 🔐 Environment Variables
 
-Copy the example file and add your OpenRouter key:
-
-```bash
-cp .env.example .env
-```
-
-Minimum required in `.env`:
+Create a local `.env` file in the project root (never commit it). Minimum required:
 
 ```bash
 OPENAI_API_KEY=your_openrouter_key
 ```
 
-See `.env.example` for all optional settings (models, timeouts, cache, external risk APIs).
-
 The backend validates required settings on startup. If `OPENAI_API_KEY` is missing,
 the API exits with a clear configuration error.
 
-Useful security/runtime settings:
+Common optional settings:
 
-- `MAX_UPLOAD_SIZE_MB` controls the maximum accepted PDF size (default: 25 MB).
-- `CORS_ORIGINS` is a comma-separated allowlist for browser clients, for example:
-  `http://127.0.0.1:5500,http://localhost:5500`.
+- `OPENAI_API_BASE` — default `https://openrouter.ai/api/v1`
+- `EMBEDDING_MODEL`, `QA_MODEL`, `AGENT_MODEL` — model names
+- `MAX_UPLOAD_SIZE_MB` — max PDF size (default: 25 MB)
+- `CORS_ORIGINS` — comma-separated browser origins, e.g. `http://127.0.0.1:5500,http://localhost:5500`
+- `API_KEY` — require `X-API-Key` on protected routes
+- `HYBRID_RETRIEVAL_ENABLED`, `RERANK_ENABLED` — advanced retrieval
+- `CELERY_ENABLED`, `REDIS_URL` — background ingestion
 
 ---
 
@@ -185,8 +181,7 @@ Open: `http://127.0.0.1:5500/`
 Build and run the API plus static frontend:
 
 ```bash
-cp .env.example .env
-# edit .env and set OPENAI_API_KEY
+# create .env locally with OPENAI_API_KEY (do not commit)
 docker compose up --build
 ```
 
