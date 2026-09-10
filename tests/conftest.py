@@ -19,6 +19,7 @@ def isolated_app_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     main._cache_hits = 0
     monkeypatch.setattr(main, "DATA_DIR", tmp_path / "data")
     monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setenv("CONVERSATIONS_DB_PATH", str(tmp_path / "conversations.db"))
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

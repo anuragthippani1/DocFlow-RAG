@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 
 API_KEY_HEADER = "X-API-Key"
 PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
-PROTECTED_PREFIXES = ("/upload", "/query", "/documents", "/cache", "/status", "/metrics")
+PROTECTED_PREFIXES = ("/upload", "/query", "/documents", "/cache", "/status", "/metrics", "/conversations")
 
 
 def _client_key(request: Request) -> str:

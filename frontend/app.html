@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/styles.css?v=6" />
+    <link rel="stylesheet" href="css/styles.css?v=8" />
   </head>
   <body class="app">
     <a class="skip-link" href="#content">Skip to content</a>
@@ -108,6 +108,18 @@
       <symbol id="i-down" viewBox="0 0 24 24">
         <path d="M7 13V4H4.5v9H7z" />
         <path d="M7 13l4.2 7.2a1.6 1.6 0 0 0 3-.9V15.5H20l-2.2-9.5H7" />
+      </symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24">
+        <rect x="7" y="7" width="10" height="10" rx="1.5" />
+      </symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24">
+        <path d="M4 20h4l10-10-4-4L4 16v4z" />
+        <path d="M13 7l4 4" />
+      </symbol>
+      <symbol id="i-dots" viewBox="0 0 24 24">
+        <circle cx="6" cy="12" r="1.2" />
+        <circle cx="12" cy="12" r="1.2" />
+        <circle cx="18" cy="12" r="1.2" />
       </symbol>
     </svg>
 
@@ -368,53 +380,62 @@
 
         <!-- ─── AI CHAT ─── -->
         <section class="view view--chat" id="view-chat" data-view="chat" hidden>
-          <div class="chat-grid">
-            <aside class="chat-rail panel">
+          <div class="chat-grid chat-grid--no-sources" id="chatGrid">
+            <aside class="chat-rail panel" id="chatRail">
               <header class="panel-head">
                 <h2>Conversations</h2>
               </header>
-              <button id="newChatBtn" class="text-link" type="button">
+              <button id="newChatBtn" class="btn btn-ghost btn-block chat-new" type="button">
                 <svg class="ic"><use href="#i-plus" /></svg> New chat
               </button>
-              <ul id="chatSessions" class="rail-list"></ul>
+              <div id="chatSessions" class="rail-list" role="list"></div>
             </aside>
 
             <section class="chat-main panel">
               <header class="panel-head chat-head">
-                <div>
-                  <h2>AI Chat</h2>
-                  <p class="panel-sub">Grounded answers with citations from your documents.</p>
+                <button id="chatConvToggle" class="icon-btn chat-mobile-only" type="button" aria-label="Open conversations">
+                  <svg class="ic"><use href="#i-chat" /></svg>
+                </button>
+                <div class="chat-head-copy">
+                  <h2 id="chatTitle">AI Chat</h2>
+                  <p class="panel-sub" id="chatSubtitle">Grounded answers from your documents.</p>
                 </div>
                 <span id="queryModePill" class="tag">Ready</span>
+                <button id="chatSourcesToggle" class="icon-btn chat-mobile-only" type="button" aria-label="Open sources" hidden>
+                  <svg class="ic"><use href="#i-doc" /></svg>
+                </button>
               </header>
 
               <div id="chatMessages" class="chat-log"></div>
+              <button id="chatJumpBtn" class="chat-jump" type="button" hidden>↓ New response</button>
 
-              <div class="chat-composer">
+              <form class="chat-composer" id="chatForm">
                 <div class="ask-field ask-field--chat">
-                  <input
+                  <textarea
                     id="chatInput"
                     class="composer-input"
-                    type="text"
+                    rows="1"
                     placeholder="Ask anything about your documents..."
                     autocomplete="off"
-                  />
-                  <button id="chatSendBtn" class="ask-go" type="button" aria-label="Send question">
-                    <svg class="ic"><use href="#i-send" /></svg>
+                  ></textarea>
+                  <button id="chatSendBtn" class="ask-go" type="submit" aria-label="Send question" disabled>
+                    <svg class="ic" data-icon="send"><use href="#i-send" /></svg>
+                    <svg class="ic" data-icon="stop" hidden><use href="#i-stop" /></svg>
                   </button>
                 </div>
+                <p class="composer-hint">Enter to send · Shift+Enter for a new line</p>
                 <div id="queryStatus" class="status-inline" role="status" aria-live="polite"></div>
-              </div>
+              </form>
             </section>
 
-            <aside class="chat-sources panel">
+            <aside class="chat-sources panel" id="chatSources" hidden>
               <header class="panel-head">
                 <h2>Sources</h2>
+                <button id="chatSourcesClose" class="icon-btn chat-mobile-only" type="button" aria-label="Close sources">
+                  <svg class="ic"><use href="#i-check" /></svg>
+                </button>
               </header>
               <ul id="sourcesList" class="source-list"></ul>
-              <div id="sourcesEmpty" class="empty empty--compact">
-                <p>Sources appear here after you ask a question.</p>
-              </div>
               <div id="responseMeta" class="meta-row" hidden>
                 <span id="responseTime"></span>
                 <span id="cacheIndicator"></span>
@@ -422,6 +443,7 @@
               <div class="visually-hidden" aria-hidden="true"><div id="answerText"></div></div>
             </aside>
           </div>
+          <div class="chat-scrim" id="chatScrim" hidden></div>
         </section>
 
         <!-- ─── AGENTS ─── -->
@@ -789,9 +811,10 @@
       </div>
     </div>
 
-    <script src="js/api.js?v=4"></script>
+    <script src="js/api.js?v=7"></script>
     <script src="js/dashboard.js?v=4"></script>
-    <script src="js/app.js?v=6"></script>
-    <script src="js/ui.js?v=6"></script>
+    <script src="js/app.js?v=7"></script>
+    <script src="js/chat.js?v=3"></script>
+    <script src="js/ui.js?v=7"></script>
   </body>
 </html>

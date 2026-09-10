@@ -29,8 +29,17 @@ def rerank_documents(query: str, documents: list[Document], top_n: int) -> list[
         model = _cross_encoder()
         pairs = [(query, doc.page_content) for doc in documents]
         scores = model.predict(pairs)
-        ranked = sorted(zip(scores, documents), key=lambda item: float(item[0]), reverse=True)
-        return [doc for _, doc in ranked[:top_n]]
+        ranked = sorted(
+            zip(scores, documents),
+            key=lambda item: float(item[0]),
+            reverse=True,
+        )
+        scored: list[Document] = []
+        for score, doc in ranked[:top_n]:
+            metadata = dict(doc.metadata or {})
+            metadata["rerank_score"] = float(score)
+            scored.append(Document(page_content=doc.page_content, metadata=metadata))
+        return scored
     except Exception:
         logger.exception("Cross-encoder rerank failed; returning unranked documents")
         return documents[:top_n]

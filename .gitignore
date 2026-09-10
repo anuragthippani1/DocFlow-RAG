@@ -18,6 +18,7 @@ env/
 # Vector DB (generated at runtime)
 db/
 data/.ingestion_status.json
+data/conversations.db
 evaluation/reports/
 
 # IDE

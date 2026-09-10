@@ -79,6 +79,7 @@ class Settings:
     graph_extraction_enabled: bool
     celery_enabled: bool
     redis_url: str
+    conversations_db_path: str
 
 
 class ConfigurationError(RuntimeError):
@@ -131,6 +132,7 @@ def get_settings() -> Settings:
         graph_extraction_enabled=_bool_env("GRAPH_EXTRACTION_ENABLED", False),
         celery_enabled=_bool_env("CELERY_ENABLED", False),
         redis_url=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        conversations_db_path=os.getenv("CONVERSATIONS_DB_PATH", "data/conversations.db"),
     )
 
 

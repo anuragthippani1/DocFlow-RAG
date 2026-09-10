@@ -18,21 +18,29 @@ const AppShell = (() => {
   const enterHandlers = new Map();
   let documentNames = [];
   let currentRoute = null;
+  let currentExtra = null;
 
   const byId = (id) => document.getElementById(id);
   const routeExists = (id) => ROUTES.some((route) => route.id === id);
 
-  function routeFromHash() {
+  function parseHash() {
     const raw = (window.location.hash || "").replace(/^#\/?/, "").split("?")[0];
-    return routeExists(raw) ? raw : DEFAULT_ROUTE;
+    const parts = raw.split("/").filter(Boolean);
+    const id = parts[0] || DEFAULT_ROUTE;
+    return {
+      id: routeExists(id) ? id : DEFAULT_ROUTE,
+      extra: parts.slice(1).join("/") || null,
+    };
+  }
+
+  function routeFromHash() {
+    return parseHash().id;
   }
 
   function setActiveNav(routeId) {
     let activeLink = null;
     for (const link of document.querySelectorAll(".side-item[data-route-link]")) {
-      const target = (link.getAttribute("href") || "").replace(/^#\/?/, "");
-      // Secondary links (e.g. "API Configuration") point at an existing page
-      // section and should not steal the active state from the page itself.
+      const target = (link.getAttribute("href") || "").replace(/^#\/?/, "").split("/")[0];
       const active = target === routeId && !link.dataset.focus;
       link.classList.toggle("is-active", active);
       if (active) activeLink = link;
@@ -72,6 +80,7 @@ const AppShell = (() => {
     setActiveNav(routeId);
     const route = ROUTES.find((item) => item.id === routeId);
     document.title = `DocRAGFlow — ${route ? route.title : "Workspace"}`;
+    currentExtra = parseHash().extra;
 
     if (currentRoute !== routeId) {
       currentRoute = routeId;
@@ -88,12 +97,14 @@ const AppShell = (() => {
     }
   }
 
-  function navigate(routeId, { focus } = {}) {
+  function navigate(routeId, { focus, conversationId } = {}) {
     const next = routeExists(routeId) ? routeId : DEFAULT_ROUTE;
-    if (window.location.hash === `#/${next}`) {
+    let hash = `#/${next}`;
+    if (next === "chat" && conversationId) hash = `#/chat/${conversationId}`;
+    if (window.location.hash === hash || (next === "chat" && !conversationId && window.location.hash === "#/chat")) {
       render(next);
     } else {
-      window.location.hash = `#/${next}`;
+      window.location.hash = hash;
     }
     if (focus) {
       requestAnimationFrame(() => {
@@ -296,6 +307,9 @@ const AppShell = (() => {
     navigate,
     get route() {
       return currentRoute;
+    },
+    get conversationId() {
+      return currentRoute === "chat" ? currentExtra : null;
     },
     onEnter(routeId, handler) {
       if (!enterHandlers.has(routeId)) enterHandlers.set(routeId, []);

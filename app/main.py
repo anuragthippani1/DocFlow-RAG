@@ -1,17 +1,18 @@
 import asyncio
+import json
 import os
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
@@ -28,20 +29,45 @@ from app.agents.inventory_agent import analyze_inventory_async
 from app.agents.logistics_agent import analyze_logistics_async
 from app.agents.supplier_agent import analyze_supplier_async
 from app.config import ConfigurationError, get_settings, validate_settings
+from app.conversations import (
+    add_message,
+    create_conversation,
+    delete_conversation,
+    delete_message,
+    get_conversation,
+    history_for_llm,
+    init_db,
+    list_conversations,
+    list_messages,
+    rename_conversation,
+    resolve_user_id,
+    truncate_after,
+    update_message_content,
+)
 from app.db_utils import vector_db_ready
 from app.external_risk import fetch_external_risk_context
 from app.ingest import delete_document, force_reindex, ingest_documents
 from app.status import DocumentStatus, list_document_statuses, set_document_status
+from app.evidence.pack import pack_to_json
+from app.evidence.types import EvidencePack
 from app.logging_utils import get_logger
 from app.observability import configure_langsmith
 from app.query import build_qa_chain
+from app.rag_chat import (
+    astream_answer,
+    clear_retriever_cache,
+    generate_answer,
+    run_conversational_retrieval,
+    source_details as details_from_docs,
+    unique_source_names,
+)
 
 
 load_dotenv()
 configure_langsmith()
 
 # Bump when releasing meaningful API or behavior changes.
-APP_VERSION = "1.4.2"
+APP_VERSION = "1.5.0"
 
 DATA_DIR = Path("data")
 logger = get_logger(__name__)
@@ -52,8 +78,27 @@ _cache_hits = 0
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 
 
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=20000)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
+    conversation_id: str | None = None
+    messages: list[ChatTurn] = Field(default_factory=list)
+
+
+class ConversationCreate(BaseModel):
+    title: str | None = Field(default=None, max_length=80)
+
+
+class ConversationRename(BaseModel):
+    title: str = Field(..., min_length=1, max_length=80)
+
+
+class MessageEdit(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
 
 
 def _validated_question(payload: QueryRequest) -> str:
@@ -80,6 +125,25 @@ def _source_label(metadata: dict) -> str:
         return str(file_name)
     source = str(metadata.get("source", "Unknown"))
     return Path(source).name if source not in {"", "Unknown"} else source
+
+
+def _unpack_retrieval(
+    result: Any,
+) -> tuple[str, list, list[dict[str, Any]], EvidencePack | None]:
+    standalone, docs, details = result[0], result[1], result[2]
+    pack = result[3] if len(result) > 3 else None
+    return standalone, docs, details, pack
+
+
+def _evidence_payload(pack: EvidencePack | None) -> dict[str, Any] | None:
+    if pack is None:
+        return None
+    return pack_to_json(pack)
+
+
+def _source_details_from_result(result: dict, limit: int | None = None) -> list[dict[str, Any]]:
+    docs = result.get("source_documents") or []
+    return details_from_docs(docs, limit=limit)
 
 
 def _top_unique_sources(result: dict, limit: int = 2) -> list[str]:
@@ -149,6 +213,7 @@ async def lifespan(_app: FastAPI):
     except ConfigurationError:
         logger.exception("Application configuration is invalid")
         raise
+    init_db()
     yield
 
 
@@ -162,7 +227,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["*", "X-API-Key"],
+    allow_headers=["*", "X-API-Key", "X-Workspace-Id"],
     # So browser JS on another origin (e.g. static UI on :5500) can read custom headers.
     expose_headers=["X-Response-Time", "X-Cache"],
 )
@@ -199,6 +264,7 @@ async def remove_document(filename: str):
     try:
         result = await run_in_threadpool(delete_document, filename)
         get_qa.cache_clear()
+        clear_retriever_cache()
         _clear_query_cache()
         return result
     except FileNotFoundError:
@@ -215,6 +281,7 @@ async def reindex_documents():
     try:
         result = await run_in_threadpool(force_reindex)
         get_qa.cache_clear()
+        clear_retriever_cache()
         _clear_query_cache()
         return result
     except ValueError as e:
@@ -338,6 +405,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         await run_in_threadpool(ingest_documents)
         set_document_status(dest_path.name, DocumentStatus.DONE, "Ingestion completed")
         get_qa.cache_clear()
+        clear_retriever_cache()
         _clear_query_cache()
     except Exception as exc:
         set_document_status(dest_path.name, DocumentStatus.FAILED, str(exc))
@@ -354,8 +422,173 @@ async def upload_pdf(file: UploadFile = File(...)):
     }
 
 
+def _history_from_payload(payload: QueryRequest) -> list[dict[str, str]]:
+    history: list[dict[str, str]] = []
+    for turn in payload.messages[-10:]:
+        content = turn.content.strip()
+        if content:
+            history.append({"role": turn.role, "content": content})
+    return history
+
+
+def _resolve_history(request: Request, payload: QueryRequest) -> list[dict[str, str]]:
+    history: list[dict[str, str]] = []
+    if payload.conversation_id:
+        history = history_for_llm(resolve_user_id(request), payload.conversation_id)
+    if not history:
+        history = _history_from_payload(payload)
+    question = payload.question.strip()
+    if history and history[-1]["role"] == "user" and history[-1]["content"] == question:
+        history = history[:-1]
+    return history
+
+
+async def _run_agents(question: str, answer: str, sources: list[str]) -> dict[str, Any]:
+    domain = detect_domain(sources, answer)
+    run_flags = agents_for_domain(domain)
+    logger.info("Agent routing domain=%s flags=%s sources=%s", domain, run_flags, sources)
+    external_context = await fetch_external_risk_context(question)
+
+    async def _maybe_supplier() -> AgentOutput:
+        if not run_flags["supplier"]:
+            return skipped_agent_output("Supplier Agent", domain)
+        return await analyze_supplier_async(answer)
+
+    async def _maybe_inventory() -> AgentOutput:
+        if not run_flags["inventory"]:
+            return skipped_agent_output("Inventory Agent", domain)
+        return await analyze_inventory_async(answer)
+
+    async def _maybe_logistics() -> AgentOutput:
+        if not run_flags["logistics"]:
+            return skipped_agent_output("Logistics Agent", domain)
+        return await analyze_logistics_async(answer)
+
+    async def _maybe_external() -> AgentOutput:
+        if not run_flags["external_risk"]:
+            return skipped_agent_output("External Risk Agent", domain)
+        return await analyze_external_risk_async(answer, external_context)
+
+    supplier, inventory, logistics, external_risk = await asyncio.gather(
+        _run_agent("Supplier Agent", _maybe_supplier),
+        _run_agent("Inventory Agent", _maybe_inventory),
+        _run_agent("Logistics Agent", _maybe_logistics),
+        _run_agent("External Risk Agent", _maybe_external),
+    )
+    agents: dict[str, AgentOutput] = {
+        "supplier": supplier,
+        "inventory": inventory,
+        "logistics": logistics,
+        "external_risk": external_risk,
+    }
+    agents_run = [name for name, enabled in run_flags.items() if enabled]
+    decision_inputs: list[dict[str, Any]] = [
+        {"agent": agent_name, **agent_output}
+        for agent_name, agent_output in agents.items()
+    ]
+    decision = await generate_final_decision_async(decision_inputs)
+    return {"agents": agents, "agents_run": agents_run, "decision": decision, "domain": domain}
+
+
+def _persist_turn(
+    request: Request,
+    payload: QueryRequest,
+    question: str,
+    answer: str,
+    details: list[dict[str, Any]],
+) -> None:
+    if not payload.conversation_id:
+        return
+    user_id = resolve_user_id(request)
+    existing = list_messages(user_id, payload.conversation_id)
+    last = existing[-1] if existing else None
+    previous = existing[-2] if len(existing) >= 2 else None
+    if (
+        last
+        and last["role"] == "assistant"
+        and previous
+        and previous["role"] == "user"
+        and previous["content"] == question
+    ):
+        delete_message(user_id, payload.conversation_id, last["id"])
+        add_message(
+            user_id,
+            payload.conversation_id,
+            "assistant",
+            answer,
+            sources=details or None,
+        )
+        return
+    if not (last and last["role"] == "user" and last["content"] == question):
+        add_message(
+            user_id,
+            payload.conversation_id,
+            "user",
+            question,
+            set_title_if_default=True,
+        )
+    add_message(
+        user_id,
+        payload.conversation_id,
+        "assistant",
+        answer,
+        sources=details or None,
+    )
+
+
+@app.get("/conversations")
+async def conversations_list(request: Request):
+    return {"conversations": list_conversations(resolve_user_id(request))}
+
+
+@app.post("/conversations")
+async def conversations_create(request: Request, payload: ConversationCreate | None = None):
+    title = payload.title if payload else None
+    return create_conversation(resolve_user_id(request), title)
+
+
+@app.get("/conversations/{conversation_id}")
+async def conversations_get(request: Request, conversation_id: str):
+    user_id = resolve_user_id(request)
+    conversation = get_conversation(user_id, conversation_id)
+    conversation["messages"] = list_messages(user_id, conversation_id)
+    return conversation
+
+
+@app.patch("/conversations/{conversation_id}")
+async def conversations_rename(request: Request, conversation_id: str, payload: ConversationRename):
+    return rename_conversation(resolve_user_id(request), conversation_id, payload.title)
+
+
+@app.delete("/conversations/{conversation_id}")
+async def conversations_delete(request: Request, conversation_id: str):
+    delete_conversation(resolve_user_id(request), conversation_id)
+    return {"ok": True}
+
+
+@app.get("/conversations/{conversation_id}/messages")
+async def conversations_messages(request: Request, conversation_id: str):
+    return {"messages": list_messages(resolve_user_id(request), conversation_id)}
+
+
+@app.patch("/conversations/{conversation_id}/messages/{message_id}")
+async def conversations_edit_message(
+    request: Request, conversation_id: str, message_id: str, payload: MessageEdit
+):
+    user_id = resolve_user_id(request)
+    updated = update_message_content(user_id, conversation_id, message_id, payload.content)
+    truncate_after(user_id, conversation_id, message_id, include=False)
+    return updated
+
+
+@app.delete("/conversations/{conversation_id}/messages/{message_id}")
+async def conversations_delete_message(request: Request, conversation_id: str, message_id: str):
+    delete_message(resolve_user_id(request), conversation_id, message_id)
+    return {"ok": True}
+
+
 @app.post("/query")
-async def query_rag(payload: QueryRequest):
+async def query_rag(request: Request, payload: QueryRequest):
     question = _validated_question(payload)
 
     global _query_count, _cache_hits
@@ -369,75 +602,67 @@ async def query_rag(payload: QueryRequest):
                 content={"error": "No vector database found. Upload documents first."},
             )
 
-        cached = _get_cached_response(question)
-        if cached:
-            _cache_hits += 1
-            return JSONResponse(content=cached, headers={"X-Cache": "HIT"})
+        history = _resolve_history(request, payload)
+        conversational = bool(history)
+        if not conversational:
+            cached = _get_cached_response(question)
+            if cached:
+                _cache_hits += 1
+                if payload.conversation_id:
+                    _persist_turn(
+                        request,
+                        payload,
+                        question,
+                        cached.get("answer") or "",
+                        cached.get("source_details") or [],
+                    )
+                return JSONResponse(content=cached, headers={"X-Cache": "HIT"})
 
         settings = get_settings()
-        qa = get_qa()
-        result = await asyncio.wait_for(
-            run_in_threadpool(qa.invoke, {"query": question}),
-            timeout=settings.query_timeout_seconds,
-        )
-        answer = str(result.get("result", "")).strip()
-        sources = _top_unique_sources(result, limit=settings.source_limit)
+        pack = None
+        if conversational:
+            retrieved = await asyncio.wait_for(
+                run_in_threadpool(run_conversational_retrieval, question, history),
+                timeout=settings.query_timeout_seconds,
+            )
+            standalone, _docs, details, pack = _unpack_retrieval(retrieved)
+            answer = await asyncio.wait_for(
+                run_in_threadpool(generate_answer, question, history, details),
+                timeout=settings.query_timeout_seconds,
+            )
+            sources = unique_source_names(details, settings.source_limit)
+            logger.info("Conversational query standalone=%s", standalone[:120])
+        else:
+            qa = get_qa()
+            result = await asyncio.wait_for(
+                run_in_threadpool(qa.invoke, {"query": question}),
+                timeout=settings.query_timeout_seconds,
+            )
+            answer = str(result.get("result", "")).strip()
+            details = _source_details_from_result(result)
+            sources = _top_unique_sources(result, limit=settings.source_limit)
+
         if not answer or not sources:
             answer = answer or "No relevant document context was found for this question."
 
-        domain = detect_domain(sources, answer)
-        run_flags = agents_for_domain(domain)
-        logger.info("Agent routing domain=%s flags=%s sources=%s", domain, run_flags, sources)
-
-        external_context = await fetch_external_risk_context(question)
-
-        async def _maybe_supplier() -> AgentOutput:
-            if not run_flags["supplier"]:
-                return skipped_agent_output("Supplier Agent", domain)
-            return await analyze_supplier_async(answer)
-
-        async def _maybe_inventory() -> AgentOutput:
-            if not run_flags["inventory"]:
-                return skipped_agent_output("Inventory Agent", domain)
-            return await analyze_inventory_async(answer)
-
-        async def _maybe_logistics() -> AgentOutput:
-            if not run_flags["logistics"]:
-                return skipped_agent_output("Logistics Agent", domain)
-            return await analyze_logistics_async(answer)
-
-        async def _maybe_external() -> AgentOutput:
-            if not run_flags["external_risk"]:
-                return skipped_agent_output("External Risk Agent", domain)
-            return await analyze_external_risk_async(answer, external_context)
-
-        supplier, inventory, logistics, external_risk = await asyncio.gather(
-            _run_agent("Supplier Agent", _maybe_supplier),
-            _run_agent("Inventory Agent", _maybe_inventory),
-            _run_agent("Logistics Agent", _maybe_logistics),
-            _run_agent("External Risk Agent", _maybe_external),
-        )
-        agents: dict[str, AgentOutput] = {
-            "supplier": supplier,
-            "inventory": inventory,
-            "logistics": logistics,
-            "external_risk": external_risk,
-        }
-        agents_run = [name for name, enabled in run_flags.items() if enabled]
-        decision_inputs: list[dict[str, Any]] = [
-            {"agent": agent_name, **agent_output}
-            for agent_name, agent_output in agents.items()
-        ]
-        decision = await generate_final_decision_async(decision_inputs)
+        extras = await _run_agents(question, answer, sources)
         response = {
             "answer": answer,
-            "agents": agents,
-            "decision": decision,
+            "agents": extras["agents"],
+            "decision": extras["decision"],
             "sources": sources,
-            "domain": domain,
-            "agents_run": agents_run,
+            "source_details": details,
+            "domain": extras["domain"],
+            "agents_run": extras["agents_run"],
         }
-        _set_cached_response(question, response)
+        evidence = _evidence_payload(pack)
+        if evidence is not None:
+            response["evidence"] = evidence
+        if payload.conversation_id:
+            response["conversation_id"] = payload.conversation_id
+        if not conversational:
+            _set_cached_response(question, response)
+        _persist_turn(request, payload, question, answer, details)
         return JSONResponse(content=response, headers={"X-Cache": "MISS"})
     except asyncio.TimeoutError:
         logger.warning("Query timed out for: %s", question[:80])
@@ -450,3 +675,93 @@ async def query_rag(payload: QueryRequest):
             status_code=500,
             detail="An internal error occurred while processing your query. Please try again.",
         )
+
+
+@app.post("/query/stream")
+async def query_rag_stream(request: Request, payload: QueryRequest):
+    question = _validated_question(payload)
+    global _query_count
+    _query_count += 1
+
+    if not vector_db_ready(get_settings().db_path):
+        raise HTTPException(status_code=503, detail="No vector database found. Upload documents first.")
+
+    history = _resolve_history(request, payload)
+    settings = get_settings()
+
+    async def events():
+        answer_parts: list[str] = []
+        try:
+            retrieved = await asyncio.wait_for(
+                run_in_threadpool(run_conversational_retrieval, question, history),
+                timeout=settings.query_timeout_seconds,
+            )
+            standalone, _docs, details, pack = _unpack_retrieval(retrieved)
+            sources = unique_source_names(details, settings.source_limit)
+            sources_event: dict[str, Any] = {
+                "sources": sources,
+                "source_details": details,
+            }
+            evidence = _evidence_payload(pack)
+            if evidence is not None:
+                sources_event["evidence"] = evidence
+            yield f"event: sources\ndata: {json.dumps(sources_event)}\n\n"
+
+            async for token in astream_answer(question, history, details):
+                if await request.is_disconnected():
+                    logger.info("Client disconnected during query stream")
+                    return
+                answer_parts.append(token)
+                yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
+
+            answer = "".join(answer_parts).strip()
+            if not answer:
+                answer = "No relevant document context was found for this question."
+                yield f"event: token\ndata: {json.dumps({'content': answer})}\n\n"
+
+            if await request.is_disconnected():
+                logger.info("Client disconnected after answer stream")
+                return
+
+            extras = await _run_agents(question, answer, sources)
+            response = {
+                "answer": answer,
+                "agents": extras["agents"],
+                "decision": extras["decision"],
+                "sources": sources,
+                "source_details": details,
+                "domain": extras["domain"],
+                "agents_run": extras["agents_run"],
+                "standalone_query": standalone,
+            }
+            evidence = _evidence_payload(pack)
+            if evidence is not None:
+                response["evidence"] = evidence
+            if payload.conversation_id:
+                response["conversation_id"] = payload.conversation_id
+            if await request.is_disconnected():
+                logger.info("Client disconnected before persisting stream")
+                return
+            _persist_turn(request, payload, question, answer, details)
+            yield f"event: done\ndata: {json.dumps(response)}\n\n"
+        except asyncio.TimeoutError:
+            yield f"event: error\ndata: {json.dumps({'detail': 'Query timed out. Try a narrower question.'})}\n\n"
+        except HTTPException as exc:
+            yield f"event: error\ndata: {json.dumps({'detail': exc.detail})}\n\n"
+        except Exception:
+            logger.exception("Streaming query failed")
+            yield (
+                "event: error\ndata: "
+                + json.dumps({"detail": "An internal error occurred while processing your query."})
+                + "\n\n"
+            )
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Cache": "MISS",
+        },
+    )

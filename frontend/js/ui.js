@@ -567,7 +567,10 @@ async function forceReindex() {
 
 function askAboutDocument(name) {
   const input = $("chatInput");
-  if (input) input.value = `In "${name}", what are the key findings?`;
+  if (input) {
+    input.value = `In "${name}", what are the key findings?`;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
   AppShell.navigate("chat");
   input?.focus();
 }
@@ -592,6 +595,10 @@ function chatEmptyState() {
 }
 
 function refreshChatEmpty() {
+  if (window.ChatWorkspace?.refreshEmpty) {
+    ChatWorkspace.refreshEmpty();
+    return;
+  }
   const log = $("chatMessages");
   if (log?.querySelector("[data-chat-empty]")) {
     log.innerHTML = chatEmptyState();
@@ -693,6 +700,7 @@ function appendAnswerBubble(answer, sources, meta) {
 }
 
 function renderSources(sources) {
+  if ($("chatGrid")) return;
   const list = $("sourcesList");
   const empty = $("sourcesEmpty");
   if (!list) return;
@@ -929,7 +937,7 @@ function renderHistory() {
   }
 
   const rail = $("chatSessions");
-  if (rail) {
+  if (rail && !window.ChatWorkspace) {
     rail.innerHTML = "";
     if (!history.length) {
       const li = document.createElement("li");
@@ -1004,6 +1012,14 @@ function renderResult(payload) {
 async function askQuestion(inputId) {
   const input = $(inputId) || $("chatInput");
   const question = (input?.value || "").trim();
+  if (window.ChatWorkspace) {
+    if (!question) {
+      setStatus($("queryStatus"), "Please type a question.", "err");
+      input?.focus();
+      return;
+    }
+    return ChatWorkspace.send(question);
+  }
   const status = $("queryStatus");
   const buttons = [$("askBtn"), $("chatSendBtn")].filter(Boolean);
 
@@ -1163,9 +1179,7 @@ function initApp() {
   initSuggestions();
   initSettings();
   initConfirm();
-
-  const log = $("chatMessages");
-  if (log && !log.children.length) log.innerHTML = chatEmptyState();
+  if (window.ChatWorkspace) ChatWorkspace.init();
 
   document.addEventListener("click", (event) => {
     if (event.target.closest("[data-upload-trigger]")) $("pdfFile")?.click();
@@ -1179,26 +1193,12 @@ function initApp() {
 
   $("reindexBtn")?.addEventListener("click", forceReindex);
   $("askBtn")?.addEventListener("click", () => askQuestion("questionInput"));
-  $("chatSendBtn")?.addEventListener("click", () => askQuestion("chatInput"));
   $("resetDashboardBtn")?.addEventListener("click", resetDashboard);
   $("clearCacheBtn")?.addEventListener("click", clearServerCache);
   $("clearHistoryBtn")?.addEventListener("click", clearHistory);
 
   $("questionInput")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") askQuestion("questionInput");
-  });
-  $("chatInput")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") askQuestion("chatInput");
-  });
-
-  $("newChatBtn")?.addEventListener("click", () => {
-    const chatLog = $("chatMessages");
-    if (chatLog) chatLog.innerHTML = chatEmptyState();
-    renderSources([]);
-    const meta = $("responseMeta");
-    if (meta) meta.hidden = true;
-    setStatus($("queryStatus"), "");
-    $("chatInput")?.focus();
   });
 
   for (const button of document.querySelectorAll("[data-agent-toggle]")) {
@@ -1245,7 +1245,9 @@ function initApp() {
   });
   AppShell.onEnter("history", renderHistory);
   AppShell.onEnter("analysis", () => renderAnalysis(state.lastPayload));
-  AppShell.onEnter("chat", () => $("chatInput")?.focus());
+  if (!window.ChatWorkspace) {
+    AppShell.onEnter("chat", () => $("chatInput")?.focus());
+  }
 
   AppShell.start();
 

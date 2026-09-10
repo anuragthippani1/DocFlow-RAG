@@ -27,10 +27,22 @@ function getApiKey() {
   return localStorage.getItem(API_KEY_STORAGE) || "";
 }
 
+function getWorkspaceId() {
+  const key = "docflow_workspace_id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = (crypto.randomUUID && crypto.randomUUID().replace(/-/g, "").slice(0, 24)) ||
+      `ws${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
 function apiHeaders(extra = {}) {
   const headers = { ...extra };
   const key = getApiKey();
   if (key) headers["X-API-Key"] = key;
+  headers["X-Workspace-Id"] = getWorkspaceId();
   return headers;
 }
 
