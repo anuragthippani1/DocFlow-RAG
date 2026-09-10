@@ -1,0 +1,754 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DocRAGFlow — Workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css?v=2" />
+  </head>
+  <body class="app">
+    <!-- Icon sprite -->
+    <svg class="sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-cube" viewBox="0 0 24 24">
+        <path d="M12 2L4 7v10l8 5 8-5V7l-8-5z" />
+        <path d="M12 12l8-5M12 12L4 7M12 12v10" />
+      </symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24">
+        <rect x="3.5" y="3.5" width="7" height="7" rx="2" />
+        <rect x="13.5" y="3.5" width="7" height="7" rx="2" />
+        <rect x="3.5" y="13.5" width="7" height="7" rx="2" />
+        <rect x="13.5" y="13.5" width="7" height="7" rx="2" />
+      </symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24">
+        <path d="M7 3.5h7l4 4v13H7z" />
+        <path d="M14 3.5v4h4" />
+      </symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path d="M20 14.5a3 3 0 0 1-3 3H9l-5 3V6.5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" />
+      </symbol>
+      <symbol id="i-agents" viewBox="0 0 24 24">
+        <circle cx="12" cy="7" r="3" />
+        <circle cx="5.5" cy="17" r="2.6" />
+        <circle cx="18.5" cy="17" r="2.6" />
+        <path d="M10 9.4 7.2 14.6M14 9.4l2.8 5.2M8 17.2h8" />
+      </symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24">
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+      </symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
+      </symbol>
+      <symbol id="i-database" viewBox="0 0 24 24">
+        <ellipse cx="12" cy="6" rx="7.5" ry="3" />
+        <path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3" />
+      </symbol>
+      <symbol id="i-cog" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M19.1 14.2a1.7 1.7 0 0 0 .3 1.9 2 2 0 1 1-2.8 2.8 1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3 2 2 0 1 1-2.8-2.8 1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9 2 2 0 1 1 2.8-2.8 1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3 2 2 0 1 1 2.8 2.8 1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+      </symbol>
+      <symbol id="i-key" viewBox="0 0 24 24">
+        <circle cx="8" cy="8" r="4.2" />
+        <path d="M11 11l9 9M17 17l2-2M14 14l2-2" />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="M16 16l4.5 4.5" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24">
+        <path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" />
+      </symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24">
+        <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13" />
+      </symbol>
+      <symbol id="i-help" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M9.8 9.3a2.3 2.3 0 1 1 3.4 2.1c-.8.5-1.2 1-1.2 1.9M12 16.6h.01" />
+      </symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24">
+        <path d="M12 3l7 3v6c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6z" />
+      </symbol>
+      <symbol id="i-box" viewBox="0 0 24 24">
+        <path d="M3.5 8.5 12 4l8.5 4.5v7L12 20l-8.5-4.5z" />
+        <path d="M3.5 8.5 12 13l8.5-4.5M12 13v7" />
+      </symbol>
+      <symbol id="i-truck" viewBox="0 0 24 24">
+        <path d="M2.5 6.5h10v10h-10zM12.5 10h4l3 3v3.5h-7z" />
+        <circle cx="6.5" cy="18" r="1.6" />
+        <circle cx="16.5" cy="18" r="1.6" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.2 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.2-3.6-8.5S9.6 5.8 12 3.5z" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
+      <symbol id="i-inbox" viewBox="0 0 24 24">
+        <path d="M3.5 13.5 6 5h12l2.5 8.5v5.5h-17z" />
+        <path d="M3.5 13.5H9a3 3 0 0 0 6 0h5.5" />
+      </symbol>
+    </svg>
+
+    <!-- Single upload input reused by every upload trigger -->
+    <input id="pdfFile" type="file" accept="application/pdf" class="sr-only" />
+
+    <!-- ══ TOPBAR ══ -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="drawerToggle" class="icon-btn topbar-menu" type="button" aria-label="Toggle navigation" aria-expanded="false">
+          <svg class="ic"><use href="#i-menu" /></svg>
+        </button>
+        <a class="topbar-brand" href="index.html" aria-label="DocRAGFlow home">
+          <span class="brand-mark"><svg class="ic"><use href="#i-cube" /></svg></span>
+          <span class="brand-name">DocRAGFlow</span>
+        </a>
+      </div>
+
+      <div class="topbar-search">
+        <svg class="ic"><use href="#i-search" /></svg>
+        <input
+          id="globalSearch"
+          type="search"
+          placeholder="Search documents and pages…"
+          autocomplete="off"
+          aria-label="Search"
+          role="combobox"
+          aria-expanded="false"
+          aria-controls="searchResults"
+        />
+        <kbd>/</kbd>
+        <ul id="searchResults" class="search-results" role="listbox" hidden></ul>
+      </div>
+
+      <div class="topbar-right">
+        <span id="apiBasePill" class="status-pill">Checking API…</span>
+        <a
+          class="icon-btn"
+          href="https://github.com/anuragthippani1/DocFlow-RAG#readme"
+          target="_blank"
+          rel="noopener"
+          title="Documentation"
+          aria-label="Documentation"
+        >
+          <svg class="ic"><use href="#i-help" /></svg>
+        </a>
+        <details class="user-menu" id="userMenu">
+          <summary aria-label="User menu"><span class="avatar">DF</span></summary>
+          <div class="user-menu-panel">
+            <div class="user-menu-head">
+              <span class="avatar">DF</span>
+              <div>
+                <strong>Workspace user</strong>
+                <small id="userMenuApi">Local API</small>
+              </div>
+            </div>
+            <a href="#/settings" data-route-link>Settings</a>
+            <a href="#/knowledge" data-route-link>Knowledge base</a>
+            <a href="index.html">Back to site</a>
+          </div>
+        </details>
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- ══ SIDEBAR ══ -->
+      <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+        <nav class="side-nav">
+          <p class="side-group">Main</p>
+          <a class="side-item" href="#/overview" data-route-link>
+            <svg class="ic"><use href="#i-grid" /></svg><span>Overview</span>
+          </a>
+          <a class="side-item" href="#/documents" data-route-link>
+            <svg class="ic"><use href="#i-doc" /></svg><span>Documents</span>
+            <em id="sideDocCount" class="side-count"></em>
+          </a>
+          <a class="side-item" href="#/chat" data-route-link>
+            <svg class="ic"><use href="#i-chat" /></svg><span>AI Chat</span>
+          </a>
+          <a class="side-item" href="#/agents" data-route-link>
+            <svg class="ic"><use href="#i-agents" /></svg><span>Agents</span>
+          </a>
+          <a class="side-item" href="#/analysis" data-route-link>
+            <svg class="ic"><use href="#i-chart" /></svg><span>Analysis</span>
+          </a>
+          <a class="side-item" href="#/history" data-route-link>
+            <svg class="ic"><use href="#i-clock" /></svg><span>History</span>
+          </a>
+
+          <p class="side-group">Workspace</p>
+          <a class="side-item" href="#/knowledge" data-route-link>
+            <svg class="ic"><use href="#i-database" /></svg><span>Knowledge Base</span>
+          </a>
+
+          <p class="side-group">System</p>
+          <a class="side-item" href="#/settings" data-route-link>
+            <svg class="ic"><use href="#i-cog" /></svg><span>Settings</span>
+          </a>
+          <a class="side-item" href="#/settings" data-route-link data-focus="apiConfig">
+            <svg class="ic"><use href="#i-key" /></svg><span>API Configuration</span>
+          </a>
+        </nav>
+
+        <div class="side-foot">
+          <div class="side-status">
+            <span class="side-status-label">API Status</span>
+            <span id="sidebarApiStatus" class="dot-status">Checking…</span>
+          </div>
+          <div class="side-user">
+            <span class="avatar">DF</span>
+            <div>
+              <strong>Workspace user</strong>
+              <small id="sidebarApiBase">—</small>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <div class="scrim" id="scrim" hidden></div>
+
+      <!-- ══ CONTENT ══ -->
+      <main class="content" id="content">
+        <!-- ─── OVERVIEW ─── -->
+        <section class="view" id="view-overview" data-view="overview" hidden>
+          <header class="page-head">
+            <div>
+              <h1 id="greeting">Welcome back</h1>
+              <p class="page-sub">Your document intelligence workspace.</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-primary" type="button" data-upload-trigger>
+                <svg class="ic"><use href="#i-plus" /></svg> Upload Document
+              </button>
+            </div>
+          </header>
+
+          <div class="stat-grid">
+            <article class="stat">
+              <span class="stat-label">Documents</span>
+              <strong id="docCountMetric" class="stat-value">—</strong>
+              <small id="docCountNote" class="stat-note">in knowledge base</small>
+            </article>
+            <article class="stat">
+              <span class="stat-label">Queries</span>
+              <strong id="totalQueries" class="stat-value">0</strong>
+              <small class="stat-note">this session</small>
+            </article>
+            <article class="stat">
+              <span class="stat-label">Cache Hit Rate</span>
+              <strong id="cacheHitRate" class="stat-value">—</strong>
+              <small id="cacheNote" class="stat-note">server cache</small>
+            </article>
+            <article class="stat">
+              <span class="stat-label">System</span>
+              <strong id="apiStatusMetric" class="stat-value">—</strong>
+              <small id="indexNote" class="stat-note">vector index</small>
+            </article>
+          </div>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <h2>Ask your knowledge base</h2>
+                <p class="panel-sub">Questions run through the full retrieval and agent pipeline.</p>
+              </div>
+            </header>
+            <div class="composer">
+              <input
+                id="questionInput"
+                class="composer-input"
+                type="text"
+                placeholder="Ask anything about your documents..."
+                autocomplete="off"
+              />
+              <button id="askBtn" class="btn btn-primary" type="button">
+                <svg class="ic"><use href="#i-send" /></svg> Ask
+              </button>
+            </div>
+            <div id="suggestions" class="chips" aria-label="Suggested questions"></div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <h2>Recent Documents</h2>
+                <p class="panel-sub">Latest files in your index.</p>
+              </div>
+              <a class="btn btn-ghost btn-sm" href="#/documents" data-route-link>View all</a>
+            </header>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Updated</th>
+                    <th class="col-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="recentDocs"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ─── DOCUMENTS ─── -->
+        <section class="view" id="view-documents" data-view="documents" hidden>
+          <header class="page-head">
+            <div>
+              <h1>Documents</h1>
+              <p class="page-sub">Manage your indexed knowledge base.</p>
+            </div>
+            <div class="page-actions">
+              <button id="reindexBtn" class="btn btn-ghost" type="button">
+                <svg class="ic"><use href="#i-refresh" /></svg> Force Re-index
+              </button>
+              <button id="uploadBtn" class="btn btn-primary" type="button" data-upload-trigger>
+                <svg class="ic"><use href="#i-plus" /></svg> Upload PDF
+              </button>
+            </div>
+          </header>
+
+          <div class="toolbar">
+            <label class="field-search">
+              <svg class="ic"><use href="#i-search" /></svg>
+              <input id="docSearch" type="search" placeholder="Search documents" aria-label="Search documents" />
+            </label>
+            <div class="segmented" role="tablist" aria-label="Filter documents">
+              <button class="seg is-active" type="button" data-doc-filter="all" role="tab" aria-selected="true">All</button>
+              <button class="seg" type="button" data-doc-filter="indexed" role="tab" aria-selected="false">Indexed</button>
+              <button class="seg" type="button" data-doc-filter="processing" role="tab" aria-selected="false">Processing</button>
+              <button class="seg" type="button" data-doc-filter="failed" role="tab" aria-selected="false">Failed</button>
+            </div>
+            <span id="docCountPill" class="count-pill"></span>
+          </div>
+
+          <section class="panel">
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Updated</th>
+                    <th class="col-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="docList"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ─── AI CHAT ─── -->
+        <section class="view view--chat" id="view-chat" data-view="chat" hidden>
+          <div class="chat-grid">
+            <aside class="chat-rail panel">
+              <header class="panel-head">
+                <h2>Conversations</h2>
+              </header>
+              <button id="newChatBtn" class="btn btn-ghost btn-block btn-sm" type="button">
+                <svg class="ic"><use href="#i-plus" /></svg> New chat
+              </button>
+              <ul id="chatSessions" class="rail-list"></ul>
+            </aside>
+
+            <section class="chat-main panel">
+              <header class="panel-head chat-head">
+                <div>
+                  <h2>AI Chat</h2>
+                  <p class="panel-sub">Grounded answers with citations from your documents.</p>
+                </div>
+                <span id="queryModePill" class="tag">Ready</span>
+              </header>
+
+              <div id="chatMessages" class="chat-log"></div>
+
+              <div class="chat-composer">
+                <div class="composer">
+                  <input
+                    id="chatInput"
+                    class="composer-input"
+                    type="text"
+                    placeholder="Ask anything about your documents..."
+                    autocomplete="off"
+                  />
+                  <button id="chatSendBtn" class="btn btn-primary" type="button" aria-label="Send question">
+                    <svg class="ic"><use href="#i-send" /></svg>
+                  </button>
+                </div>
+                <div id="queryStatus" class="status-inline" role="status" aria-live="polite"></div>
+              </div>
+            </section>
+
+            <aside class="chat-sources panel">
+              <header class="panel-head">
+                <h2>Sources</h2>
+              </header>
+              <ul id="sourcesList" class="source-list"></ul>
+              <div id="sourcesEmpty" class="empty empty--compact">
+                <p>Sources appear here after you ask a question.</p>
+              </div>
+              <div id="responseMeta" class="meta-row" hidden>
+                <span id="responseTime"></span>
+                <span id="cacheIndicator"></span>
+              </div>
+              <div class="visually-hidden" aria-hidden="true"><div id="answerText"></div></div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- ─── AGENTS ─── -->
+        <section class="view" id="view-agents" data-view="agents" hidden>
+          <header class="page-head">
+            <div>
+              <h1>AI Agents</h1>
+              <p class="page-sub">
+                Specialized agents analyze different aspects of your knowledge. They run
+                automatically with every question.
+              </p>
+            </div>
+            <div class="page-actions">
+              <a class="btn btn-primary" href="#/chat" data-route-link>
+                <svg class="ic"><use href="#i-chat" /></svg> Run a query
+              </a>
+            </div>
+          </header>
+
+          <div class="agent-grid">
+            <article class="agent-card" data-agent="supplier">
+              <header>
+                <span class="agent-icon agent-icon--violet"><svg class="ic"><use href="#i-box" /></svg></span>
+                <div>
+                  <h3>Supplier Agent</h3>
+                  <p>Analyzes supplier-related risks.</p>
+                </div>
+                <span id="supplierRisk" class="agent-badge"></span>
+              </header>
+              <dl class="agent-body">
+                <dt>Reason</dt>
+                <dd id="supplierReason" class="agent-text">Not run yet.</dd>
+                <dt>Recommended action</dt>
+                <dd id="supplierAction" class="agent-text">Not run yet.</dd>
+              </dl>
+            </article>
+
+            <article class="agent-card" data-agent="inventory">
+              <header>
+                <span class="agent-icon agent-icon--blue"><svg class="ic"><use href="#i-inbox" /></svg></span>
+                <div>
+                  <h3>Inventory Agent</h3>
+                  <p>Analyzes inventory and stock-related information.</p>
+                </div>
+                <span id="inventoryRisk" class="agent-badge"></span>
+              </header>
+              <dl class="agent-body">
+                <dt>Reason</dt>
+                <dd id="inventoryReason" class="agent-text">Not run yet.</dd>
+                <dt>Recommended action</dt>
+                <dd id="inventoryAction" class="agent-text">Not run yet.</dd>
+              </dl>
+            </article>
+
+            <article class="agent-card" data-agent="logistics">
+              <header>
+                <span class="agent-icon agent-icon--cyan"><svg class="ic"><use href="#i-truck" /></svg></span>
+                <div>
+                  <h3>Logistics Agent</h3>
+                  <p>Analyzes transportation and logistics.</p>
+                </div>
+                <span id="logisticsRisk" class="agent-badge"></span>
+              </header>
+              <dl class="agent-body">
+                <dt>Reason</dt>
+                <dd id="logisticsReason" class="agent-text">Not run yet.</dd>
+                <dt>Recommended action</dt>
+                <dd id="logisticsAction" class="agent-text">Not run yet.</dd>
+              </dl>
+            </article>
+
+            <article class="agent-card" data-agent="external_risk">
+              <header>
+                <span class="agent-icon agent-icon--amber"><svg class="ic"><use href="#i-globe" /></svg></span>
+                <div>
+                  <h3>External Risk Agent</h3>
+                  <p>Analyzes external and global risks.</p>
+                </div>
+                <span id="externalRiskRisk" class="agent-badge"></span>
+              </header>
+              <dl class="agent-body">
+                <dt>Reason</dt>
+                <dd id="externalRiskReason" class="agent-text">Not run yet.</dd>
+                <dt>Recommended action</dt>
+                <dd id="externalRiskAction" class="agent-text">Not run yet.</dd>
+              </dl>
+            </article>
+          </div>
+
+          <p class="hint">
+            Agents are selected per question by the domain router — research documents skip the
+            supply-chain agents, and skipped agents are marked as such.
+          </p>
+        </section>
+
+        <!-- ─── ANALYSIS ─── -->
+        <section class="view" id="view-analysis" data-view="analysis" hidden>
+          <header class="page-head">
+            <div>
+              <h1>Analysis</h1>
+              <p class="page-sub">Final decision and risk findings from the latest question.</p>
+            </div>
+          </header>
+
+          <div id="analysisEmpty" class="empty">
+            <span class="empty-art"><svg class="ic"><use href="#i-chart" /></svg></span>
+            <h3>No analysis yet</h3>
+            <p>Ask a question to generate a risk decision from your documents.</p>
+            <a class="btn btn-primary" href="#/chat" data-route-link>Ask a question</a>
+          </div>
+
+          <div id="analysisContent" hidden>
+            <div class="analysis-top">
+              <article class="panel analysis-risk">
+                <span class="panel-label">Risk level</span>
+                <div id="decisionRisk" class="risk-display"></div>
+                <span class="panel-label">Domain</span>
+                <p id="analysisDomain" class="analysis-line">—</p>
+              </article>
+
+              <article class="panel">
+                <span class="panel-label">Overall decision</span>
+                <p id="decisionText" class="analysis-line"></p>
+                <span class="panel-label">Priority action</span>
+                <p id="priorityAction" class="analysis-line"></p>
+              </article>
+
+              <article class="panel">
+                <span class="panel-label">Session risk distribution</span>
+                <ul class="bars" id="riskBars">
+                  <li data-risk="low"><span>Low</span><i><b></b></i><em>0</em></li>
+                  <li data-risk="medium"><span>Medium</span><i><b></b></i><em>0</em></li>
+                  <li data-risk="high"><span>High</span><i><b></b></i><em>0</em></li>
+                </ul>
+                <p class="panel-label">Dominant level</p>
+                <p id="riskLevelMetric" class="analysis-line">—</p>
+              </article>
+            </div>
+
+            <section class="panel">
+              <header class="panel-head">
+                <div>
+                  <h2>Agent findings</h2>
+                  <p class="panel-sub">Per-agent risk, reasoning, and recommended action.</p>
+                </div>
+              </header>
+              <div class="finding-grid" id="findingGrid"></div>
+            </section>
+
+            <section class="panel">
+              <header class="panel-head">
+                <div>
+                  <h2>Recommended actions</h2>
+                  <p class="panel-sub">Collected from every agent that ran.</p>
+                </div>
+              </header>
+              <ol class="action-list" id="actionList"></ol>
+            </section>
+          </div>
+        </section>
+
+        <!-- ─── HISTORY ─── -->
+        <section class="view" id="view-history" data-view="history" hidden>
+          <header class="page-head">
+            <div>
+              <h1>Query History</h1>
+              <p class="page-sub">Recent questions from this browser.</p>
+            </div>
+            <div class="page-actions">
+              <button id="clearHistoryBtn" class="btn btn-ghost" type="button">
+                <svg class="ic"><use href="#i-trash" /></svg> Clear history
+              </button>
+            </div>
+          </header>
+
+          <section class="panel">
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Question</th>
+                    <th>Risk</th>
+                    <th>Response</th>
+                    <th>Time</th>
+                    <th class="col-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="historyList"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ─── KNOWLEDGE BASE ─── -->
+        <section class="view" id="view-knowledge" data-view="knowledge" hidden>
+          <header class="page-head">
+            <div>
+              <h1>Knowledge Base</h1>
+              <p class="page-sub">Vector index health and retrieval configuration.</p>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-primary" type="button" data-upload-trigger>
+                <svg class="ic"><use href="#i-plus" /></svg> Upload Document
+              </button>
+            </div>
+          </header>
+
+          <div class="stat-grid">
+            <article class="stat">
+              <span class="stat-label">Vector index</span>
+              <strong id="kbIndexState" class="stat-value">—</strong>
+              <small class="stat-note">FAISS store</small>
+            </article>
+            <article class="stat">
+              <span class="stat-label">Documents</span>
+              <strong id="kbDocCount" class="stat-value">—</strong>
+              <small class="stat-note">indexed PDFs</small>
+            </article>
+            <article class="stat">
+              <span class="stat-label">API version</span>
+              <strong id="kbVersion" class="stat-value">—</strong>
+              <small class="stat-note">backend build</small>
+            </article>
+            <article class="stat">
+              <span class="stat-label">Uptime</span>
+              <strong id="kbUptime" class="stat-value">—</strong>
+              <small class="stat-note">since restart</small>
+            </article>
+          </div>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <h2>Retrieval configuration</h2>
+                <p class="panel-sub">Live flags reported by the backend.</p>
+              </div>
+            </header>
+            <ul class="flag-list" id="kbFlags"></ul>
+          </section>
+        </section>
+
+        <!-- ─── SETTINGS ─── -->
+        <section class="view" id="view-settings" data-view="settings" hidden>
+          <header class="page-head">
+            <div>
+              <h1>Settings</h1>
+              <p class="page-sub">Workspace, connection, and system controls.</p>
+            </div>
+          </header>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <h2>General</h2>
+                <p class="panel-sub">How this browser talks to your DocRAGFlow backend.</p>
+              </div>
+            </header>
+            <dl class="detail-list">
+              <div>
+                <dt>Active API</dt>
+                <dd id="settingsApiBase">—</dd>
+              </div>
+              <div>
+                <dt>API key</dt>
+                <dd id="settingsKeyState">Not set</dd>
+              </div>
+              <div>
+                <dt>Stored locally</dt>
+                <dd>API URL, API key, and query history stay in this browser.</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="panel" id="apiConfig">
+            <header class="panel-head">
+              <div>
+                <h2>API Configuration</h2>
+                <p class="panel-sub">Point the workspace at a local or deployed backend.</p>
+              </div>
+            </header>
+            <div class="form-grid">
+              <div class="field">
+                <label class="field-label" for="apiUrlInput">API URL</label>
+                <input id="apiUrlInput" class="input" type="text" placeholder="http://127.0.0.1:8000" />
+                <button id="saveApiUrlBtn" class="btn btn-ghost btn-sm" type="button">Save URL</button>
+              </div>
+              <div class="field">
+                <label class="field-label" for="apiKeyInput">API Key</label>
+                <div class="input-row">
+                  <input id="apiKeyInput" class="input" type="password" placeholder="X-API-Key (if enabled)" autocomplete="off" />
+                  <button id="toggleKeyBtn" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Show</button>
+                </div>
+                <button id="saveApiKeyBtn" class="btn btn-ghost btn-sm" type="button">Save Key</button>
+              </div>
+            </div>
+            <p class="hint">Only required when the backend sets <code>API_KEY</code>.</p>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <h2>System</h2>
+                <p class="panel-sub">Cache and session controls.</p>
+              </div>
+            </header>
+            <p id="metricsPanel" class="hint"></p>
+            <div class="button-row">
+              <button id="clearCacheBtn" class="btn btn-ghost" type="button">Clear server cache</button>
+              <button id="resetDashboardBtn" class="btn btn-ghost" type="button">Reset session metrics</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <header class="panel-head">
+              <div>
+                <h2>About</h2>
+                <p class="panel-sub">DocRAGFlow — turn documents into intelligence.</p>
+              </div>
+            </header>
+            <dl class="detail-list">
+              <div>
+                <dt>Backend version</dt>
+                <dd id="aboutVersion">—</dd>
+              </div>
+              <div>
+                <dt>Stack</dt>
+                <dd>FastAPI · FAISS · LangChain · OpenRouter</dd>
+              </div>
+              <div>
+                <dt>Documentation</dt>
+                <dd>
+                  <a href="https://github.com/anuragthippani1/DocFlow-RAG#readme" target="_blank" rel="noopener">GitHub README</a>
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="uploadStatus" class="toast toast--float" role="status" aria-live="polite" hidden></div>
+
+    <script src="js/api.js?v=2"></script>
+    <script src="js/dashboard.js?v=2"></script>
+    <script src="js/app.js?v=2"></script>
+    <script src="js/ui.js?v=2"></script>
+  </body>
+</html>

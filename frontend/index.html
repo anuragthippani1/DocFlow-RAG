@@ -3,276 +3,450 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DocFlow RAG</title>
+    <title>DocRAGFlow — Turn documents into intelligence</title>
+    <meta
+      name="description"
+      content="DocRAGFlow transforms your documents into an intelligent knowledge base using Retrieval-Augmented Generation."
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="stylesheet" href="css/landing.css?v=2" />
   </head>
-  <body class="app-body">
-    <nav class="navbar" aria-label="Main navigation">
-      <div class="navbar-brand">
-        <div class="logo-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 2L4 7v10l8 5 8-5V7l-8-5z"
-              stroke="currentColor"
-              stroke-width="1.5"
-              stroke-linejoin="round"
-            />
-            <path d="M12 12l8-5M12 12L4 7M12 12v10" stroke="currentColor" stroke-width="1.5" />
-          </svg>
-        </div>
-        <div>
-          <div class="logo-title">DocFlow RAG</div>
-          <div class="logo-subtitle">Intelligent Document Analysis Platform · v1.4.2</div>
-        </div>
-      </div>
-      <div class="navbar-actions">
-        <span id="apiBasePill" class="status-pill">Checking API…</span>
-        <button
-          id="settingsToggleBtn"
-          class="icon-btn"
-          type="button"
-          title="Settings"
-          aria-label="Open settings"
-        >
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-            <path
-              d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.7 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.7-1.1 1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.1 1.7 1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.37.31.69.72.9 1.2.21.48.32 1 .32 1.53s-.11 1.05-.32 1.53c-.21.48-.53.89-.9 1.2z"
-              stroke="currentColor"
-              stroke-width="1.5"
-            />
-          </svg>
-        </button>
-        <div class="avatar" title="DocFlow user" aria-hidden="true">DF</div>
-      </div>
-    </nav>
-
-    <div class="app-shell">
-      <!-- LEFT SIDEBAR -->
-      <aside class="sidebar sidebar-left" aria-label="Documents and settings">
-        <input id="pdfFile" type="file" accept="application/pdf" class="visually-hidden" />
-
-        <button id="uploadBtn" class="btn btn-gradient btn-block" type="button">
-          <span class="btn-icon">+</span> Upload PDF
-        </button>
-        <button id="reindexBtn" class="btn btn-ghost btn-block" type="button">Force Re-index</button>
-
-        <div id="uploadStatus" class="status-toast" role="status" aria-live="polite"></div>
-        <div id="docCountPill" class="sidebar-meta"></div>
-
-        <section class="glass-card">
-          <div class="card-head">
-            <h2>Documents</h2>
-          </div>
-          <ul id="docList" class="doc-grid"></ul>
-        </section>
-
-        <section class="glass-card api-settings-card">
-          <div class="card-head">
-            <h2>API Settings</h2>
-          </div>
-          <label class="field-label" for="apiUrlInput">API URL</label>
-          <input
-            id="apiUrlInput"
-            class="input"
-            type="text"
-            placeholder="http://127.0.0.1:8000"
-          />
-          <button id="saveApiUrlBtn" class="btn btn-ghost btn-block" type="button">Save URL</button>
-          <label class="field-label" for="apiKeyInput">API Key</label>
-          <input
-            id="apiKeyInput"
-            class="input"
-            type="password"
-            placeholder="X-API-Key (if enabled)"
-          />
-          <button id="saveApiKeyBtn" class="btn btn-ghost btn-block" type="button">Save Key</button>
-          <p id="metricsPanel" class="muted-text"></p>
-        </section>
-      </aside>
-
-      <!-- CENTER -->
-      <main class="main-panel" aria-label="Chat and analytics">
-        <section class="composer glass-card">
-          <div class="composer-row">
-            <input
-              id="questionInput"
-              class="composer-input"
-              type="text"
-              placeholder="Ask anything about your documents..."
-              autocomplete="off"
-            />
-            <button id="askBtn" class="btn btn-gradient btn-send" type="button" aria-label="Send question">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path
-                  d="M5 12h14M13 6l6 6-6 6"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-          <div id="suggestions" class="suggestions" aria-label="Suggested prompts"></div>
-          <div class="composer-meta">
-            <span id="queryModePill" class="meta-pill">Ready</span>
-            <span id="queryStatus" class="status-inline"></span>
-          </div>
-        </section>
-
-        <section class="metrics-row" aria-label="Dashboard metrics">
-          <div class="metric-card glass-card">
-            <span class="metric-label">Total Queries</span>
-            <span id="totalQueries" class="metric-value">0</span>
-          </div>
-          <div class="metric-card glass-card">
-            <span class="metric-label">Risk Level</span>
-            <span id="riskLevelMetric" class="metric-value">—</span>
-          </div>
-          <div class="metric-card glass-card">
-            <span class="metric-label">Cache Hit Rate</span>
-            <span id="cacheHitRate" class="metric-value">—</span>
-          </div>
-          <div class="metric-card glass-card">
-            <span class="metric-label">API Status</span>
-            <span id="apiStatusMetric" class="metric-value">—</span>
-          </div>
-        </section>
-
-        <section class="metrics-actions">
-          <button id="resetDashboardBtn" class="btn btn-ghost btn-sm" type="button">Reset Dashboard</button>
-          <button id="clearCacheBtn" class="btn btn-ghost btn-sm" type="button">Clear Cache</button>
-        </section>
-
-        <section class="chat-section glass-card" aria-label="Conversation">
-          <div id="chatMessages" class="chat-messages">
-            <div class="chat-welcome fade-in">
-              <p>Upload PDFs, then ask questions. Answers include sources, agent analysis, and decisions.</p>
-            </div>
-          </div>
-          <!-- Hidden anchors for legacy render targets -->
-          <div class="visually-hidden" aria-hidden="true">
-            <div id="answerText"></div>
-            <ul id="sourcesList"></ul>
-            <div id="responseMeta">
-              <span id="responseTime"></span>
-              <span id="cacheIndicator"></span>
-            </div>
-          </div>
-        </section>
-
-        <section class="history-section glass-card">
-          <div class="card-head">
-            <h2>Query History</h2>
-            <button id="clearHistoryBtn" class="btn btn-ghost btn-sm" type="button">Clear</button>
-          </div>
-          <ul id="historyList" class="history-list"></ul>
-        </section>
-      </main>
-
-      <!-- RIGHT SIDEBAR -->
-      <aside class="sidebar sidebar-right" aria-label="Agent analysis">
-        <section class="glass-card agents-panel">
-          <div class="card-head">
-            <h2>Agent Analysis</h2>
-          </div>
-
-          <details class="agent-accordion" data-agent="supplier">
-            <summary>
-              <span>Supplier Agent</span>
-              <span id="supplierRisk" class="accordion-badge"></span>
-            </summary>
-            <div class="accordion-body">
-              <div class="field-label">Reason</div>
-              <div id="supplierReason" class="agent-text"></div>
-              <div class="field-label">Recommended Action</div>
-              <div id="supplierAction" class="agent-text"></div>
-            </div>
-          </details>
-
-          <details class="agent-accordion" data-agent="inventory">
-            <summary>
-              <span>Inventory Agent</span>
-              <span id="inventoryRisk" class="accordion-badge"></span>
-            </summary>
-            <div class="accordion-body">
-              <div class="field-label">Reason</div>
-              <div id="inventoryReason" class="agent-text"></div>
-              <div class="field-label">Recommended Action</div>
-              <div id="inventoryAction" class="agent-text"></div>
-            </div>
-          </details>
-
-          <details class="agent-accordion" data-agent="logistics">
-            <summary>
-              <span>Logistics Agent</span>
-              <span id="logisticsRisk" class="accordion-badge"></span>
-            </summary>
-            <div class="accordion-body">
-              <div class="field-label">Reason</div>
-              <div id="logisticsReason" class="agent-text"></div>
-              <div class="field-label">Recommended Action</div>
-              <div id="logisticsAction" class="agent-text"></div>
-            </div>
-          </details>
-
-          <details class="agent-accordion" data-agent="external_risk">
-            <summary>
-              <span>External Risk Agent</span>
-              <span id="externalRiskRisk" class="accordion-badge"></span>
-            </summary>
-            <div class="accordion-body">
-              <div class="field-label">Reason</div>
-              <div id="externalRiskReason" class="agent-text"></div>
-              <div class="field-label">Recommended Action</div>
-              <div id="externalRiskAction" class="agent-text"></div>
-            </div>
-          </details>
-        </section>
-
-        <section class="glass-card decision-panel decision-card">
-          <div class="card-head">
-            <h2>Final Decision</h2>
-            <div id="decisionRisk"></div>
-          </div>
-          <div class="field-label">Decision</div>
-          <div id="decisionText" class="agent-text"></div>
-          <div class="field-label">Priority Action</div>
-          <div id="priorityAction" class="agent-text"></div>
-        </section>
-      </aside>
+  <body class="landing">
+    <div class="ambient" aria-hidden="true">
+      <span class="ambient-glow ambient-glow--violet"></span>
+      <span class="ambient-glow ambient-glow--blue"></span>
+      <span class="ambient-glow ambient-glow--cyan"></span>
+      <span class="ambient-grid"></span>
     </div>
 
-    <dialog id="settingsDialog" class="settings-dialog">
-      <form method="dialog" class="settings-dialog-inner glass-card">
-        <div class="card-head">
-          <h2>Settings</h2>
-          <button class="icon-btn" type="submit" value="close" aria-label="Close settings">✕</button>
-        </div>
-        <p class="muted-text">Configure API URL, API key, and view system metrics.</p>
-        <label class="field-label" for="apiUrlInputDialog">API URL</label>
-        <input id="apiUrlInputDialog" class="input" type="text" />
-        <label class="field-label" for="apiKeyInputDialog">API Key</label>
-        <input id="apiKeyInputDialog" class="input" type="password" />
-        <menu class="dialog-actions">
-          <button class="btn btn-ghost" type="submit" value="close">Close</button>
-        </menu>
-      </form>
-    </dialog>
+    <a class="skip-link" href="#hero">Skip to content</a>
 
-    <script src="js/api.js"></script>
-    <script src="js/dashboard.js"></script>
-    <script src="js/ui.js"></script>
+    <!-- ══ NAVBAR ══ -->
+    <header class="nav" id="siteNav">
+      <div class="shell nav-inner">
+        <a class="brand" href="#hero" aria-label="DocRAGFlow home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 2L4 7v10l8 5 8-5V7l-8-5z"
+                stroke="currentColor"
+                stroke-width="1.4"
+                stroke-linejoin="round"
+              />
+              <path d="M12 12l8-5M12 12L4 7M12 12v10" stroke="currentColor" stroke-width="1.4" />
+            </svg>
+          </span>
+          <span class="brand-text">DocRAGFlow</span>
+        </a>
+
+        <nav class="nav-links" id="navLinks" aria-label="Sections">
+          <a href="#features">Features</a>
+          <a href="#how">How It Works</a>
+          <a href="#usecases">Use Cases</a>
+          <a
+            href="https://github.com/anuragthippani1/DocFlow-RAG#readme"
+            target="_blank"
+            rel="noopener"
+            >Documentation</a
+          >
+        </nav>
+
+        <div class="nav-actions">
+          <a class="btn btn-quiet" href="app.html?settings=1">Login</a>
+          <a class="btn btn-primary" href="app.html">Get Started</a>
+          <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="navLinks" aria-label="Toggle navigation">
+            <span></span><span></span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- ══ HERO ══ -->
+      <section class="hero" id="hero">
+        <div class="shell hero-inner">
+          <div class="hero-copy">
+            <p class="eyebrow reveal" data-delay="0">Retrieval-Augmented Generation</p>
+            <h1 class="hero-title reveal" data-delay="1">
+              Your Documents.<br /><span class="gradient-text">Now Intelligent.</span>
+            </h1>
+            <p class="hero-sub reveal" data-delay="2">
+              DocRAGFlow transforms your documents into an intelligent knowledge base using
+              Retrieval-Augmented Generation — with answers grounded in your own sources.
+            </p>
+            <div class="hero-actions reveal" data-delay="3">
+              <a class="btn btn-primary btn-lg" href="app.html">Start Exploring</a>
+              <a class="btn btn-glass btn-lg" href="#how">See How It Works</a>
+            </div>
+            <dl class="hero-stats reveal" data-delay="4">
+              <div>
+                <dt>Grounded</dt>
+                <dd>Every answer cites its sources</dd>
+              </div>
+              <div>
+                <dt>Semantic</dt>
+                <dd>Vector search across all documents</dd>
+              </div>
+              <div>
+                <dt>Local-first</dt>
+                <dd>FAISS index on your own machine</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div class="hero-visual reveal" data-delay="2">
+            <div class="scene" id="heroScene" data-parallax>
+              <canvas id="heroCanvas" aria-hidden="true"></canvas>
+              <!-- Shown until (or instead of) the WebGL scene -->
+              <div class="scene-fallback" id="sceneFallback" aria-hidden="true">
+                <span class="orb-core"></span>
+                <span class="orb-ring orb-ring--a"></span>
+                <span class="orb-ring orb-ring--b"></span>
+                <span class="orb-doc orb-doc--1"></span>
+                <span class="orb-doc orb-doc--2"></span>
+                <span class="orb-doc orb-doc--3"></span>
+              </div>
+            </div>
+            <p class="scene-caption">Documents → Knowledge → Answer</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ HOW IT WORKS ══ -->
+      <section class="section" id="how">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">How DocRAGFlow works</p>
+            <h2>From Document to Answer</h2>
+            <p class="section-sub">
+              Five stages turn a raw PDF into a grounded, citable response.
+            </p>
+          </header>
+
+          <ol class="steps" id="steps">
+            <li class="step reveal" data-delay="0">
+              <span class="step-num">01</span>
+              <h3>Upload</h3>
+              <p>Upload your documents.</p>
+            </li>
+            <li class="step reveal" data-delay="1">
+              <span class="step-num">02</span>
+              <h3>Chunk</h3>
+              <p>Break documents into meaningful sections.</p>
+            </li>
+            <li class="step reveal" data-delay="2">
+              <span class="step-num">03</span>
+              <h3>Embed</h3>
+              <p>Convert content into semantic vectors.</p>
+            </li>
+            <li class="step reveal" data-delay="3">
+              <span class="step-num">04</span>
+              <h3>Retrieve</h3>
+              <p>Find the most relevant information.</p>
+            </li>
+            <li class="step reveal" data-delay="4">
+              <span class="step-num">05</span>
+              <h3>Generate</h3>
+              <p>Generate an intelligent answer using retrieved context.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ══ RAG PIPELINE ══ -->
+      <section class="section section--tight" id="pipeline">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">Inside the engine</p>
+            <h2>The Retrieval Pipeline</h2>
+            <p class="section-sub">
+              Watch a question travel through embedding, vector search, and generation.
+            </p>
+          </header>
+
+          <div class="flow glass reveal" id="flow">
+            <svg class="flow-svg" viewBox="0 0 900 470" role="img" aria-label="RAG pipeline diagram">
+              <defs>
+                <linearGradient id="flowStroke" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#8b5cf6" />
+                  <stop offset="100%" stop-color="#06b6d4" />
+                </linearGradient>
+              </defs>
+              <g class="flow-lines" stroke="url(#flowStroke)" fill="none" stroke-width="1.6">
+                <path class="flow-line" d="M450 74 L450 134" />
+                <path class="flow-line" d="M450 194 L450 254" />
+                <path class="flow-line" d="M450 254 C450 300 250 296 250 330" />
+                <path class="flow-line" d="M450 254 L450 330" />
+                <path class="flow-line" d="M450 254 C450 300 650 296 650 330" />
+                <path class="flow-line" d="M250 372 C250 402 450 398 450 400" />
+                <path class="flow-line" d="M450 372 L450 400" />
+                <path class="flow-line" d="M650 372 C650 402 450 398 450 400" />
+              </g>
+              <g class="flow-nodes">
+                <g class="flow-node" data-node="0">
+                  <rect x="330" y="34" width="240" height="40" rx="14" />
+                  <text x="450" y="59">User Query</text>
+                </g>
+                <g class="flow-node" data-node="1">
+                  <rect x="360" y="134" width="180" height="40" rx="14" />
+                  <text x="450" y="159">Embedding</text>
+                </g>
+                <g class="flow-node flow-node--key" data-node="2">
+                  <rect x="345" y="214" width="210" height="42" rx="14" />
+                  <text x="450" y="240">Vector Search</text>
+                </g>
+                <g class="flow-node flow-node--chunk" data-node="3">
+                  <rect x="180" y="330" width="140" height="42" rx="12" />
+                  <text x="250" y="356">Chunk</text>
+                </g>
+                <g class="flow-node flow-node--chunk" data-node="3">
+                  <rect x="380" y="330" width="140" height="42" rx="12" />
+                  <text x="450" y="356">Chunk</text>
+                </g>
+                <g class="flow-node flow-node--chunk" data-node="3">
+                  <rect x="580" y="330" width="140" height="42" rx="12" />
+                  <text x="650" y="356">Chunk</text>
+                </g>
+                <g class="flow-node flow-node--key" data-node="4">
+                  <rect x="380" y="400" width="140" height="40" rx="14" />
+                  <text x="450" y="425">LLM</text>
+                </g>
+              </g>
+            </svg>
+
+            <div class="flow-answer">
+              <span class="flow-answer-dot" aria-hidden="true"></span>
+              <div>
+                <strong>Answer</strong>
+                <p>Generated from retrieved context, with citations back to each source document.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ FEATURES ══ -->
+      <section class="section" id="features">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">Capabilities</p>
+            <h2>Everything you need to query knowledge</h2>
+          </header>
+
+          <div class="cards" data-tilt-group>
+            <article class="card glass reveal" data-delay="0" data-tilt>
+              <span class="card-icon card-icon--violet" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.6" />
+                  <path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                </svg>
+              </span>
+              <h3>Intelligent Document Search</h3>
+              <p>Ask in plain language and find the passage that actually answers the question.</p>
+            </article>
+
+            <article class="card glass reveal" data-delay="1" data-tilt>
+              <span class="card-icon card-icon--blue" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M4 12h4l2.5-6 3 12L16 12h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <h3>Semantic Retrieval</h3>
+              <p>Vector similarity over embedded chunks, with optional hybrid BM25 ranking.</p>
+            </article>
+
+            <article class="card glass reveal" data-delay="2" data-tilt>
+              <span class="card-icon card-icon--cyan" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="3.5" y="4.5" width="17" height="13" rx="3.5" stroke="currentColor" stroke-width="1.6" />
+                  <path d="M8 21l4-3.5 4 3.5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <h3>Context-Aware Answers</h3>
+              <p>Responses are constrained to retrieved context, so the model stays on your data.</p>
+            </article>
+
+            <article class="card glass reveal" data-delay="0" data-tilt>
+              <span class="card-icon card-icon--violet" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M7 4h7l4 4v12H7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                  <path d="M14 4v4h4M10 13h5M10 16.5h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                </svg>
+              </span>
+              <h3>Source Citations</h3>
+              <p>Every answer lists the documents it came from, so results stay auditable.</p>
+            </article>
+
+            <article class="card glass reveal" data-delay="1" data-tilt>
+              <span class="card-icon card-icon--blue" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <rect x="3" y="6" width="12" height="14" rx="2.5" stroke="currentColor" stroke-width="1.6" />
+                  <path d="M7 3h11a3 3 0 0 1 3 3v11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                </svg>
+              </span>
+              <h3>Multi-Document Understanding</h3>
+              <p>Query across an entire corpus at once instead of one file at a time.</p>
+            </article>
+
+            <article class="card glass reveal" data-delay="2" data-tilt>
+              <span class="card-icon card-icon--cyan" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M20 15a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <h3>AI-Powered Chat</h3>
+              <p>Conversational workspace with history, latency, and cache indicators built in.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ PRODUCT PREVIEW ══ -->
+      <section class="section" id="preview">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">Product</p>
+            <h2>The workspace</h2>
+            <p class="section-sub">
+              Upload, ask, and read grounded answers alongside the sources behind them.
+            </p>
+          </header>
+
+          <div class="mock-wrap reveal" data-parallax data-parallax-strength="6">
+            <div class="mock glass">
+              <div class="mock-bar">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                <span class="mock-url">docragflow · workspace</span>
+              </div>
+              <div class="mock-body">
+                <aside class="mock-side">
+                  <p class="mock-label">Documents</p>
+                  <ul class="mock-docs">
+                    <li><span class="pdf">PDF</span> GRAIL — Agent Indexing</li>
+                    <li><span class="pdf">PDF</span> Foundation Models</li>
+                    <li><span class="pdf">PDF</span> Long-Horizon Tasks</li>
+                  </ul>
+                  <p class="mock-label">Collections</p>
+                  <ul class="mock-chips">
+                    <li>Research</li>
+                    <li>Internal</li>
+                  </ul>
+                  <p class="mock-label">Recent files</p>
+                  <ul class="mock-chips">
+                    <li>FitText.pdf</li>
+                  </ul>
+                </aside>
+
+                <div class="mock-main">
+                  <div class="mock-msg mock-msg--user">
+                    <span class="mock-role">You</span>
+                    <p>What are the major risks mentioned in these documents?</p>
+                  </div>
+                  <div class="mock-msg mock-msg--ai">
+                    <span class="mock-role">DocRAGFlow</span>
+                    <p>
+                      Based on the retrieved documents, the major risks are concentrated in retrieval
+                      quality, long-horizon task drift, and evaluation coverage gaps.
+                    </p>
+                    <div class="mock-sources">
+                      <span>Sources</span>
+                      <em>Document 01</em><em>Document 03</em><em>Document 07</em>
+                    </div>
+                    <div class="mock-meta">
+                      <span>Server: 812ms</span><span class="fresh">Fresh</span>
+                    </div>
+                  </div>
+                  <div class="mock-composer">
+                    <span>Ask anything about your documents…</span>
+                    <i aria-hidden="true">→</i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ USE CASES ══ -->
+      <section class="section" id="usecases">
+        <div class="shell">
+          <header class="section-head reveal">
+            <p class="eyebrow">Use cases</p>
+            <h2>Built for Knowledge-Heavy Work</h2>
+          </header>
+
+          <div class="usecases">
+            <article class="usecase glass reveal" data-delay="0">
+              <span class="usecase-art usecase-art--research" aria-hidden="true"></span>
+              <h3>Research</h3>
+              <p>Search through hundreds of research documents instantly.</p>
+            </article>
+            <article class="usecase glass reveal" data-delay="1">
+              <span class="usecase-art usecase-art--business" aria-hidden="true"></span>
+              <h3>Business</h3>
+              <p>Ask questions across internal company knowledge.</p>
+            </article>
+            <article class="usecase glass reveal" data-delay="2">
+              <span class="usecase-art usecase-art--legal" aria-hidden="true"></span>
+              <h3>Legal</h3>
+              <p>Retrieve relevant clauses and references from large documents.</p>
+            </article>
+            <article class="usecase glass reveal" data-delay="3">
+              <span class="usecase-art usecase-art--education" aria-hidden="true"></span>
+              <h3>Education</h3>
+              <p>Turn lecture notes and study material into an AI tutor.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ FINAL CTA ══ -->
+      <section class="cta" id="cta">
+        <div class="cta-art" aria-hidden="true">
+          <span class="cta-shape cta-shape--1"></span>
+          <span class="cta-shape cta-shape--2"></span>
+          <span class="cta-shape cta-shape--3"></span>
+        </div>
+        <div class="shell cta-inner reveal">
+          <h2>Turn Your Documents Into Knowledge.</h2>
+          <p>
+            Upload your documents. Ask questions. Get intelligent answers grounded in your data.
+          </p>
+          <a class="btn btn-primary btn-lg" href="app.html">Launch DocRAGFlow →</a>
+        </div>
+      </section>
+    </main>
+
+    <!-- ══ FOOTER ══ -->
+    <footer class="footer">
+      <div class="shell footer-inner">
+        <div class="footer-brand">
+          <span class="brand-text">DocRAGFlow</span>
+          <p>Turn documents into intelligence.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="app.html">Dashboard</a>
+          <a href="https://github.com/anuragthippani1/DocFlow-RAG#readme" target="_blank" rel="noopener">Documentation</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="https://github.com/anuragthippani1/DocFlow-RAG" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/anuragthippani1/DocFlow-RAG#readme" target="_blank" rel="noopener">Documentation</a>
+        </div>
+      </div>
+      <div class="shell footer-base">
+        <span>© <span id="year">2026</span> DocRAGFlow</span>
+        <span>Built with FastAPI, FAISS, and LangChain</span>
+      </div>
+    </footer>
+
+    <script type="module" src="js/landing.js?v=2"></script>
   </body>
 </html>
