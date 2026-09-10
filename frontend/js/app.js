@@ -28,17 +28,45 @@ const AppShell = (() => {
   }
 
   function setActiveNav(routeId) {
+    let activeLink = null;
     for (const link of document.querySelectorAll(".side-item[data-route-link]")) {
       const target = (link.getAttribute("href") || "").replace(/^#\/?/, "");
       // Secondary links (e.g. "API Configuration") point at an existing page
       // section and should not steal the active state from the page itself.
-      link.classList.toggle("is-active", target === routeId && !link.dataset.focus);
+      const active = target === routeId && !link.dataset.focus;
+      link.classList.toggle("is-active", active);
+      if (active) activeLink = link;
     }
+    moveSideIndicator(activeLink);
+  }
+
+  function moveSideIndicator(activeLink) {
+    const nav = document.querySelector(".side-nav");
+    const indicator = nav?.querySelector(".side-indicator");
+    if (!nav || !indicator) return;
+    if (!activeLink) {
+      indicator.style.opacity = "0";
+      return;
+    }
+    const top = activeLink.offsetTop + (activeLink.offsetHeight - 18) / 2;
+    indicator.style.transform = `translateY(${top}px)`;
+    indicator.style.height = "18px";
+    indicator.style.opacity = "1";
+  }
+
+  function replayEnter(routeId) {
+    const view = document.querySelector(`.view[data-view="${routeId}"]`);
+    if (!view) return;
+    view.classList.remove("is-entering");
+    void view.offsetWidth;
+    view.classList.add("is-entering");
   }
 
   function render(routeId) {
     for (const view of document.querySelectorAll(".view")) {
-      view.hidden = view.dataset.view !== routeId;
+      const active = view.dataset.view === routeId;
+      view.hidden = !active;
+      view.toggleAttribute("inert", !active);
     }
 
     setActiveNav(routeId);
@@ -48,6 +76,7 @@ const AppShell = (() => {
     if (currentRoute !== routeId) {
       currentRoute = routeId;
       window.scrollTo({ top: 0, behavior: "auto" });
+      replayEnter(routeId);
     }
 
     for (const handler of enterHandlers.get(routeId) || []) {
@@ -69,6 +98,9 @@ const AppShell = (() => {
     if (focus) {
       requestAnimationFrame(() => {
         byId(focus)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        for (const nav of document.querySelectorAll("[data-settings-nav]")) {
+          nav.classList.toggle("is-active", nav.dataset.settingsNav === focus);
+        }
       });
     }
   }
@@ -92,7 +124,7 @@ const AppShell = (() => {
       if (event.target.closest("[data-route-link]")) setOpen(false);
     });
     window.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape" && byId("confirmOverlay")?.hidden !== false) setOpen(false);
     });
     window.addEventListener("resize", () => {
       if (window.innerWidth > 900) setOpen(false);
@@ -115,12 +147,26 @@ const AppShell = (() => {
   function initSearch() {
     const input = byId("globalSearch");
     const results = byId("searchResults");
+    const wrap = input?.closest(".topbar-search");
+    const toggle = byId("searchToggle");
     if (!input || !results) return;
 
     const close = () => {
       results.hidden = true;
       results.innerHTML = "";
       input.setAttribute("aria-expanded", "false");
+    };
+
+    const closePanel = () => {
+      close();
+      wrap?.classList.remove("is-open");
+      toggle?.setAttribute("aria-expanded", "false");
+    };
+
+    const openPanel = () => {
+      wrap?.classList.add("is-open");
+      toggle?.setAttribute("aria-expanded", "true");
+      input.focus();
     };
 
     const run = () => {
@@ -162,7 +208,7 @@ const AppShell = (() => {
             }
           }
           input.value = "";
-          close();
+          closePanel();
         });
         li.appendChild(button);
         results.appendChild(li);
@@ -173,11 +219,14 @@ const AppShell = (() => {
     };
 
     input.addEventListener("input", run);
-    input.addEventListener("focus", run);
+    input.addEventListener("focus", () => {
+      openPanel();
+      run();
+    });
     input.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         input.value = "";
-        close();
+        closePanel();
         input.blur();
       }
       if (event.key === "Enter") {
@@ -185,15 +234,26 @@ const AppShell = (() => {
       }
     });
 
+    toggle?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (wrap?.classList.contains("is-open")) {
+        closePanel();
+      } else {
+        openPanel();
+      }
+    });
+
     document.addEventListener("click", (event) => {
-      if (!event.target.closest(".topbar-search")) close();
+      if (event.target.closest(".topbar-search") || event.target.closest("#searchToggle")) return;
+      closePanel();
     });
 
     window.addEventListener("keydown", (event) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
-      if (event.key === "/" && !typing) {
+      const commandK = (event.key === "k" || event.key === "K") && (event.metaKey || event.ctrlKey);
+      if (commandK || (event.key === "/" && !typing)) {
         event.preventDefault();
-        input.focus();
+        openPanel();
       }
     });
   }
@@ -216,6 +276,10 @@ const AppShell = (() => {
     initMenus();
 
     window.addEventListener("hashchange", () => render(routeFromHash()));
+    window.addEventListener("resize", () => {
+      const active = document.querySelector(".side-item.is-active");
+      moveSideIndicator(active);
+    });
 
     // Legacy deep link: app.html?settings=1 opened the settings dialog.
     const wantsSettings = new URLSearchParams(window.location.search).get("settings") === "1";

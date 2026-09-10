@@ -40,6 +40,69 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function formatAnswer(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${code.trim()}</code></pre>`);
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  return html;
+}
+
+function userFacingError(data, fallback) {
+  const detail = data?.detail ?? data?.error ?? data?.message;
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail) && typeof detail[0]?.msg === "string") return detail[0].msg;
+  return fallback;
+}
+
+const confirmState = { resolve: null };
+
+function initConfirm() {
+  const overlay = $("confirmOverlay");
+  const okBtn = $("confirmOk");
+  const cancelBtn = $("confirmCancel");
+  if (!overlay || !okBtn || !cancelBtn) return;
+
+  const finish = (value) => {
+    if (!confirmState.resolve) return;
+    overlay.hidden = true;
+    const resolve = confirmState.resolve;
+    confirmState.resolve = null;
+    resolve(value);
+  };
+
+  okBtn.addEventListener("click", () => finish(true));
+  cancelBtn.addEventListener("click", () => finish(false));
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) finish(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !overlay.hidden) {
+      event.preventDefault();
+      finish(false);
+    }
+  });
+}
+
+function confirmAction({ title, body, confirmLabel = "Confirm", danger = false } = {}) {
+  const overlay = $("confirmOverlay");
+  const titleEl = $("confirmTitle");
+  const bodyEl = $("confirmBody");
+  const okBtn = $("confirmOk");
+  if (!overlay || !okBtn) return Promise.resolve(false);
+
+  if (titleEl) titleEl.textContent = title || "Are you sure?";
+  if (bodyEl) bodyEl.textContent = body || "";
+  okBtn.textContent = confirmLabel;
+  okBtn.className = danger ? "btn btn-danger-fill" : "btn btn-primary";
+  overlay.hidden = false;
+  okBtn.focus();
+
+  return new Promise((resolve) => {
+    confirmState.resolve = resolve;
+  });
+}
+
 async function safeJson(response) {
   const text = await response.text();
   if (!text) return null;
@@ -114,6 +177,19 @@ function formatUptime(seconds) {
   return `${hours}h ${minutes % 60}m`;
 }
 
+function setMetric(el, value, className) {
+  if (!el) return;
+  const next = String(value);
+  const changed = el.textContent !== next;
+  el.textContent = next;
+  if (className) el.className = className;
+  if (changed) {
+    el.classList.remove("is-ticking");
+    void el.offsetWidth;
+    el.classList.add("is-ticking");
+  }
+}
+
 /* ── Health, stats, metrics ────────────────────────────────────────────── */
 function paintApiStatus(online, data) {
   const version = data?.version ? `v${data.version}` : "";
@@ -131,11 +207,11 @@ function paintApiStatus(online, data) {
     sideStatus.textContent = online ? "Online" : "Offline";
   }
 
-  const metric = $("apiStatusMetric");
-  if (metric) {
-    metric.textContent = online ? "Online" : "Offline";
-    metric.className = `stat-value ${online ? "ok" : "bad"}`;
-  }
+  setMetric(
+    $("apiStatusMetric"),
+    online ? "Online" : "Offline",
+    `stat-value ${online ? "ok" : "bad"}`
+  );
 
   const indexNote = $("indexNote");
   if (indexNote) {
@@ -146,11 +222,11 @@ function paintApiStatus(online, data) {
       : "backend unreachable";
   }
 
-  const kbIndex = $("kbIndexState");
-  if (kbIndex) {
-    kbIndex.textContent = !online ? "Unknown" : data?.vector_db_ready ? "Ready" : "Not built";
-    kbIndex.className = `stat-value ${online && data?.vector_db_ready ? "ok" : "warn"}`;
-  }
+  setMetric(
+    $("kbIndexState"),
+    !online ? "Unknown" : data?.vector_db_ready ? "Ready" : "Not built",
+    `stat-value ${online && data?.vector_db_ready ? "ok" : "warn"}`
+  );
 
   for (const id of ["kbVersion", "aboutVersion"]) {
     const el = $(id);
@@ -186,14 +262,11 @@ async function refreshServerStats() {
     const total = data?.total_queries ?? 0;
     const hits = data?.cache_hits ?? 0;
 
-    if (rate) {
-      rate.textContent = total ? `${Math.round((hits / total) * 100)}%` : "—";
-    }
+    setMetric(rate, total ? `${Math.round((hits / total) * 100)}%` : "—");
     if (note) {
       note.textContent = total ? `${hits} hits / ${total} server queries` : "no server queries yet";
     }
-    const uptime = $("kbUptime");
-    if (uptime) uptime.textContent = formatUptime(data?.uptime_seconds);
+    setMetric($("kbUptime"), formatUptime(data?.uptime_seconds));
   } catch {
     if (rate) rate.textContent = "—";
     if (note) note.textContent = "stats unavailable";
@@ -235,7 +308,7 @@ async function refreshMetrics() {
     }
   } catch {
     if (summary) summary.textContent = "System metrics unavailable.";
-    if (list) list.innerHTML = '<li><span>Metrics unavailable</span></li>';
+    if (list) list.innerHTML = "<li><span>Could not load retrieval flags. Check the API connection.</span></li>";
   }
 }
 
@@ -262,7 +335,7 @@ function statusMeta(name) {
     key: "unknown",
     label: "In library",
     cls: "badge--unknown",
-    detail: "No ingestion record for this file",
+    detail: "",
   };
 }
 
@@ -309,12 +382,21 @@ function documentRow(name, { compact = false } = {}) {
   return tr;
 }
 
-function emptyRow(message, columns = 5) {
+function emptyRow(message, columns = 5, actionHtml = "") {
   const tr = document.createElement("tr");
   tr.className = "table-empty";
-  tr.innerHTML = `<td colspan="${columns}">${escapeHtml(message)}</td>`;
+  tr.innerHTML = `<td colspan="${columns}"><div class="empty-cell"><p>${escapeHtml(
+    message
+  )}</p>${actionHtml}</div></td>`;
   return tr;
 }
+
+const UPLOAD_CTA =
+  '<button class="btn btn-primary btn-sm" type="button" data-upload-trigger>Upload PDF</button>';
+const CHAT_CTA =
+  '<a class="btn btn-primary btn-sm" href="#/chat" data-route-link>Ask a question</a>';
+const SETTINGS_CTA =
+  '<a class="btn btn-ghost btn-sm" href="#/settings" data-route-link>Open settings</a>';
 
 function visibleDocuments() {
   const query = state.search.trim().toLowerCase();
@@ -334,9 +416,17 @@ function renderDocuments() {
     const rows = visibleDocuments();
     table.innerHTML = "";
     if (!total) {
-      table.appendChild(emptyRow("No documents yet. Upload a PDF to build your knowledge base."));
+      table.appendChild(
+        emptyRow(
+          "No documents yet. Upload a PDF to start building your knowledge base.",
+          5,
+          UPLOAD_CTA
+        )
+      );
     } else if (!rows.length) {
-      table.appendChild(emptyRow("No documents match this search or filter."));
+      table.appendChild(
+        emptyRow("No documents match this search or filter. Try a different name or status.")
+      );
     } else {
       rows.forEach((name) => table.appendChild(documentRow(name)));
     }
@@ -345,7 +435,9 @@ function renderDocuments() {
   if (recent) {
     recent.innerHTML = "";
     if (!total) {
-      recent.appendChild(emptyRow("No documents yet — upload your first PDF."));
+      recent.appendChild(
+        emptyRow("No documents yet. Upload a PDF to see it here.", 5, UPLOAD_CTA)
+      );
     } else {
       state.documents.slice(0, 5).forEach((name) => {
         recent.appendChild(documentRow(name, { compact: true }));
@@ -360,14 +452,13 @@ function renderDocuments() {
       shown === total ? `${total} document${total === 1 ? "" : "s"}` : `${shown} of ${total} shown`;
   }
 
-  const metric = $("docCountMetric");
-  if (metric) metric.textContent = String(total);
+  setMetric($("docCountMetric"), total);
   const note = $("docCountNote");
   if (note) note.textContent = total ? "in knowledge base" : "nothing indexed yet";
   const sideCount = $("sideDocCount");
   if (sideCount) sideCount.textContent = total ? String(total) : "";
-  const kbCount = $("kbDocCount");
-  if (kbCount) kbCount.textContent = String(total);
+  setMetric($("kbDocCount"), total);
+  refreshChatEmpty();
 }
 
 async function refreshDocuments() {
@@ -385,7 +476,24 @@ async function refreshDocuments() {
     const table = $("docList");
     if (table) {
       table.innerHTML = "";
-      table.appendChild(emptyRow("Could not load documents. Check the API connection."));
+      table.appendChild(
+        emptyRow(
+          "Could not load documents. Check that the API is running, then try again.",
+          5,
+          SETTINGS_CTA
+        )
+      );
+    }
+    const recent = $("recentDocs");
+    if (recent) {
+      recent.innerHTML = "";
+      recent.appendChild(
+        emptyRow(
+          "Could not load documents. Check that the API is running, then try again.",
+          5,
+          SETTINGS_CTA
+        )
+      );
     }
     const pill = $("docCountPill");
     if (pill) pill.textContent = "Documents unavailable";
@@ -409,8 +517,7 @@ async function uploadPdf(file) {
     const res = await apiFetch("/upload", { method: "POST", body: form });
     const data = await safeJson(res);
     if (!res.ok) {
-      const detail = data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data);
-      throw new Error(detail || `Upload failed (${res.status})`);
+      throw new Error(userFacingError(data, `Upload failed (${res.status})`));
     }
     showToast(data?.message || "Upload successful.", "ok");
     await Promise.all([refreshDocuments(), checkApiHealth()]);
@@ -422,7 +529,13 @@ async function uploadPdf(file) {
 }
 
 async function deleteDocument(filename) {
-  if (!confirm(`Delete ${filename} from the index?`)) return;
+  const ok = await confirmAction({
+    title: "Delete document?",
+    body: `${filename} will be removed from the index. This cannot be undone.`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
   showToast(`Deleting ${filename}…`, null, { spinner: true });
   try {
     const res = await apiFetch(`/documents/${encodeURIComponent(filename)}`, { method: "DELETE" });
@@ -461,13 +574,28 @@ function askAboutDocument(name) {
 
 /* ── Chat ──────────────────────────────────────────────────────────────── */
 function chatEmptyState() {
+  if (!state.documents.length) {
+    return (
+      '<div class="empty empty--chat" data-chat-empty>' +
+      "<h3>No documents yet</h3>" +
+      "<p>Upload a PDF so DocRAGFlow can retrieve answers from your knowledge base.</p>" +
+      UPLOAD_CTA +
+      "</div>"
+    );
+  }
   return (
-    '<div class="empty" data-chat-empty>' +
-    '<span class="empty-art"><svg class="ic"><use href="#i-chat" /></svg></span>' +
-    "<h3>Ask your first question</h3>" +
+    '<div class="empty empty--chat" data-chat-empty>' +
+    "<h3>Ask anything about your documents</h3>" +
     "<p>Answers are generated from your indexed documents and include source citations.</p>" +
     "</div>"
   );
+}
+
+function refreshChatEmpty() {
+  const log = $("chatMessages");
+  if (log?.querySelector("[data-chat-empty]")) {
+    log.innerHTML = chatEmptyState();
+  }
 }
 
 function ensureChatReady() {
@@ -520,16 +648,22 @@ function appendAnswerBubble(answer, sources, meta) {
 
   wrap.innerHTML = `
     <span class="bubble-role">DocRAGFlow</span>
-    <div class="bubble-text">${escapeHtml(answer)}</div>
+    <div class="bubble-text">${formatAnswer(answer)}</div>
     ${sourceTags}
     <div class="bubble-foot">
       <span class="bubble-meta">${escapeHtml(
         [meta.time, meta.cache].filter(Boolean).join(" · ")
       )}</span>
       <div class="bubble-actions">
-        <button class="act-btn" type="button" data-act="copy" title="Copy answer">⧉</button>
-        <button class="act-btn" type="button" data-act="like" title="Helpful">👍</button>
-        <button class="act-btn" type="button" data-act="dislike" title="Not helpful">👎</button>
+        <button class="act-btn" type="button" data-act="copy" title="Copy answer" aria-label="Copy answer">
+          <svg class="ic"><use href="#i-copy" /></svg>
+        </button>
+        <button class="act-btn" type="button" data-act="like" title="Helpful" aria-label="Mark as helpful">
+          <svg class="ic"><use href="#i-up" /></svg>
+        </button>
+        <button class="act-btn" type="button" data-act="dislike" title="Not helpful" aria-label="Mark as not helpful">
+          <svg class="ic"><use href="#i-down" /></svg>
+        </button>
       </div>
     </div>
   `;
@@ -568,7 +702,15 @@ function renderSources(sources) {
     li.textContent = source;
     list.appendChild(li);
   }
-  if (empty) empty.hidden = sources.length > 0;
+  if (empty) {
+    empty.hidden = sources.length > 0;
+    const copy = empty.querySelector("p");
+    if (copy && !sources.length) {
+      copy.textContent = state.lastPayload
+        ? "This answer did not include source citations."
+        : "Sources appear here after you ask a question.";
+    }
+  }
 }
 
 /* ── Agents + analysis ─────────────────────────────────────────────────── */
@@ -669,8 +811,7 @@ function renderAnalysis(payload) {
 
 /* ── Session dashboard ─────────────────────────────────────────────────── */
 function renderDashboard() {
-  const total = $("totalQueries");
-  if (total) total.textContent = String(dashboardState.totalQueries);
+  setMetric($("totalQueries"), dashboardState.totalQueries);
 
   const dominant = dominantRisk();
   const level = $("riskLevelMetric");
@@ -749,7 +890,13 @@ function renderHistory() {
   if (table) {
     table.innerHTML = "";
     if (!history.length) {
-      table.appendChild(emptyRow("No queries yet. Ask a question to build your history."));
+      table.appendChild(
+        emptyRow(
+          "No queries yet. Questions you ask appear here so you can reopen them later.",
+          5,
+          CHAT_CTA
+        )
+      );
     } else {
       for (const entry of history) {
         const tr = document.createElement("tr");
@@ -787,7 +934,7 @@ function renderHistory() {
     if (!history.length) {
       const li = document.createElement("li");
       li.className = "rail-meta";
-      li.textContent = "No conversations yet.";
+      li.textContent = "Ask a question to start a conversation.";
       rail.appendChild(li);
       return;
     }
@@ -811,7 +958,19 @@ function renderHistory() {
   }
 }
 
-function clearHistory() {
+async function clearHistory() {
+  const history = loadHistory();
+  if (!history.length) {
+    showToast("History is already empty.", "ok");
+    return;
+  }
+  const ok = await confirmAction({
+    title: "Clear query history?",
+    body: "This removes recent questions stored in this browser. It does not change your documents or index.",
+    confirmLabel: "Clear history",
+    danger: true,
+  });
+  if (!ok) return;
   localStorage.removeItem(HISTORY_KEY);
   renderHistory();
   showToast("Query history cleared.", "ok");
@@ -858,7 +1017,10 @@ async function askQuestion(inputId) {
   appendUserBubble(question);
   appendPendingBubble();
   setStatus(status, "Retrieving context and running agents…");
-  buttons.forEach((button) => (button.disabled = true));
+  buttons.forEach((button) => {
+    button.disabled = true;
+    button.classList.add("is-busy");
+  });
 
   const startedAt = performance.now();
 
@@ -876,8 +1038,7 @@ async function askQuestion(inputId) {
 
     if (!res.ok) {
       if (res.status === 503 && data?.error) throw new Error(data.error);
-      const detail = data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data);
-      throw new Error(detail || data?.error || `Query failed (${res.status})`);
+      throw new Error(userFacingError(data, data?.error || `Query failed (${res.status})`));
     }
 
     const { answer, sources } = renderResult(data);
@@ -907,12 +1068,15 @@ async function askQuestion(inputId) {
     removePendingBubble();
     const message = error?.message || String(error);
     setStatus(status, `Error: ${message}`, "err");
-    appendAnswerBubble(`Sorry — this question could not be answered: ${message}`, [], {
+    appendAnswerBubble("Sorry — this question could not be answered. Check the API connection and try again.", [], {
       time: "",
       cache: "",
     });
   } finally {
-    buttons.forEach((button) => (button.disabled = false));
+    buttons.forEach((button) => {
+      button.disabled = false;
+      button.classList.remove("is-busy");
+    });
   }
 }
 
@@ -950,6 +1114,20 @@ function initSettings() {
     button.textContent = shown ? "Show" : "Hide";
     button.setAttribute("aria-pressed", String(!shown));
   });
+
+  const navLinks = [...document.querySelectorAll("[data-settings-nav]")];
+  const activateSettings = (id) => {
+    for (const link of navLinks) {
+      link.classList.toggle("is-active", link.dataset.settingsNav === id);
+    }
+    $(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  for (const link of navLinks) {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      activateSettings(link.dataset.settingsNav);
+    });
+  }
 }
 
 /* ── Suggestions ───────────────────────────────────────────────────────── */
@@ -984,13 +1162,14 @@ function initApp() {
   initGreeting();
   initSuggestions();
   initSettings();
+  initConfirm();
 
   const log = $("chatMessages");
   if (log && !log.children.length) log.innerHTML = chatEmptyState();
 
-  for (const trigger of document.querySelectorAll("[data-upload-trigger]")) {
-    trigger.addEventListener("click", () => $("pdfFile")?.click());
-  }
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-upload-trigger]")) $("pdfFile")?.click();
+  });
 
   $("pdfFile")?.addEventListener("change", (event) => {
     const file = event.target.files?.[0];
@@ -1021,6 +1200,15 @@ function initApp() {
     setStatus($("queryStatus"), "");
     $("chatInput")?.focus();
   });
+
+  for (const button of document.querySelectorAll("[data-agent-toggle]")) {
+    button.addEventListener("click", () => {
+      const card = button.closest(".agent-card");
+      if (!card) return;
+      const open = card.classList.toggle("is-open");
+      button.textContent = open ? "Close" : "Open →";
+    });
+  }
 
   $("docSearch")?.addEventListener("input", (event) => {
     state.search = event.target.value;
