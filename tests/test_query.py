@@ -4,6 +4,8 @@ from langchain_core.documents import Document
 
 from app import main
 from app.evidence.pack import build_evidence_pack, source_details_from_pack
+from app.evidence.types import IntentResult
+from tests.evidence_helpers import document_pack, patch_evidence_path, supported_outcome
 
 
 class FakeQA:
@@ -58,6 +60,33 @@ def patch_query_dependencies(monkeypatch, qa):
     monkeypatch.setattr(main, "generate_final_decision_async", fake_decision)
 
 
+def patch_supported_product(
+    monkeypatch,
+    qa,
+    *,
+    question: str = "What changed?",
+    answer: str | None = None,
+    document: str = "sample.pdf",
+    excerpt: str = "The process changed last quarter.",
+    generate_calls: list | None = None,
+    stream_calls: list | None = None,
+):
+    patch_query_dependencies(monkeypatch, qa)
+    pack = document_pack(question, excerpt, document=document)
+    calls = generate_calls if generate_calls is not None else []
+    streams = stream_calls if stream_calls is not None else []
+    patch_evidence_path(
+        monkeypatch,
+        main,
+        pack=pack,
+        verify_fn=lambda q, p: supported_outcome(p),
+        answer=answer or f"Answer for {question}",
+        generate_calls=calls,
+        stream_calls=streams,
+    )
+    return pack, calls, streams
+
+
 def test_query_returns_503_when_vector_db_missing(client, monkeypatch):
     monkeypatch.setattr(main, "vector_db_ready", lambda _path: False)
 
@@ -69,7 +98,13 @@ def test_query_returns_503_when_vector_db_missing(client, monkeypatch):
 
 def test_query_endpoint_returns_agent_response(client, monkeypatch):
     qa = FakeQA()
-    patch_query_dependencies(monkeypatch, qa)
+    patch_supported_product(
+        monkeypatch,
+        qa,
+        question="What changed?",
+        answer="Answer for What changed?",
+        document="sample.pdf",
+    )
 
     response = client.post("/query", json={"question": "What changed?"})
 
@@ -81,12 +116,18 @@ def test_query_endpoint_returns_agent_response(client, monkeypatch):
     assert payload["decision"]["final_risk"] == "Low"
     assert payload.get("domain") in {"general", "research", "supply_chain"}
     assert "agents_run" in payload
-    assert qa.calls == 1
+    assert payload["verdict"]["verdict"] == "supported"
+    assert qa.calls == 0
 
 
 def test_query_cache_returns_hit_on_repeated_question(client, monkeypatch):
     qa = FakeQA()
-    patch_query_dependencies(monkeypatch, qa)
+    _, generate_calls, _ = patch_supported_product(
+        monkeypatch,
+        qa,
+        question="Repeat me",
+        answer="Answer for Repeat me",
+    )
 
     first = client.post("/query", json={"question": "Repeat me"})
     second = client.post("/query", json={"question": "  repeat   me  "})
@@ -96,7 +137,8 @@ def test_query_cache_returns_hit_on_repeated_question(client, monkeypatch):
     assert second.status_code == 200
     assert first.headers["X-Cache"] == "MISS"
     assert second.headers["X-Cache"] == "HIT"
-    assert qa.calls == 1
+    assert generate_calls == ["generate"]
+    assert qa.calls == 0
     assert stats.json()["cache_hits"] == 1
 
 
@@ -104,17 +146,23 @@ def test_followup_uses_conversation_history_not_stateless_qa(client, monkeypatch
     qa = FakeQA()
     patch_query_dependencies(monkeypatch, qa)
     captured = {}
+    pack = document_pack(
+        "Which one is most serious?",
+        "Delay is the leading risk.",
+        document="sample.pdf",
+        page_number=2,
+    )
 
     def fake_retrieval(question, history):
         captured["question"] = question
         captured["history"] = history
-        return (
-            "most serious supply chain risk",
-            [],
-            [{"n": 1, "document": "sample.pdf", "excerpt": "Delay is the leading risk.", "page": 3}],
-        )
+        return (question, [], source_details_from_pack(pack), pack)
 
+    monkeypatch.setattr(main, "analyze_intent", lambda q, h: IntentResult(
+        needs_clarification=False, clarification_question=None, slots=[]
+    ))
     monkeypatch.setattr(main, "run_conversational_retrieval", fake_retrieval)
+    monkeypatch.setattr(main, "verify_evidence", lambda q, p: supported_outcome(p))
     monkeypatch.setattr(
         main, "generate_answer", lambda question, history, details: "Delay is the most serious risk [1]."
     )
@@ -138,27 +186,33 @@ def test_followup_uses_conversation_history_not_stateless_qa(client, monkeypatch
     assert captured["history"][1]["content"] == "Delay and cost overruns."
     assert payload["answer"] == "Delay is the most serious risk [1]."
     assert payload["source_details"][0]["document"] == "sample.pdf"
-    assert payload["source_details"][0]["page"] == 3
+    assert payload["verdict"]["verdict"] == "supported"
 
 
 def test_query_stream_emits_tokens_and_persists_conversation(client, monkeypatch):
     qa = FakeQA()
-    patch_query_dependencies(monkeypatch, qa)
     captured = {}
+    pack = document_pack(
+        "What are the main supply chain risks?",
+        "Port congestion.",
+        document="sample.pdf",
+        page_number=1,
+    )
+    patch_query_dependencies(monkeypatch, qa)
 
     def fake_retrieval(question, history):
         captured["history"] = history
-        return (
-            question,
-            [],
-            [{"n": 1, "document": "sample.pdf", "excerpt": "Port congestion.", "page": 2}],
-        )
+        return (question, [], source_details_from_pack(pack), pack)
 
     async def fake_stream(question, history, details):
         for token in ["Port ", "congestion ", "is the main risk [1]."]:
             yield token
 
+    monkeypatch.setattr(main, "analyze_intent", lambda q, h: IntentResult(
+        needs_clarification=False, clarification_question=None, slots=[]
+    ))
     monkeypatch.setattr(main, "run_conversational_retrieval", fake_retrieval)
+    monkeypatch.setattr(main, "verify_evidence", lambda q, p: supported_outcome(p))
     monkeypatch.setattr(main, "astream_answer", fake_stream)
 
     conversation = client.post("/conversations", json={"title": "New conversation"}).json()
@@ -175,6 +229,7 @@ def test_query_stream_emits_tokens_and_persists_conversation(client, monkeypatch
         body = "".join(response.iter_text())
 
     assert "event: sources" in body
+    assert "event: verdict" in body
     assert "event: token" in body
     assert "event: done" in body
     assert "Port congestion is the main risk [1]." in body
@@ -209,13 +264,13 @@ def test_query_stream_emits_tokens_and_persists_conversation(client, monkeypatch
 
 def test_repeat_query_on_same_conversation_replaces_assistant(client, monkeypatch):
     qa = FakeQA()
-    patch_query_dependencies(monkeypatch, qa)
-    monkeypatch.setattr(
-        main,
-        "run_conversational_retrieval",
-        lambda question, history: (question, [], [{"n": 1, "document": "sample.pdf", "excerpt": "x"}]),
+    patch_supported_product(
+        monkeypatch,
+        qa,
+        question="What changed?",
+        answer="Regenerated answer",
+        document="sample.pdf",
     )
-    monkeypatch.setattr(main, "generate_answer", lambda question, history, details: "Regenerated answer")
 
     conversation = client.post("/conversations", json={}).json()
     path = "/query"
@@ -275,7 +330,11 @@ def test_query_stream_sources_event_includes_evidence_pack(client, monkeypatch):
         assert passed_details == details
         yield "Port congestion is the main risk [1]."
 
+    monkeypatch.setattr(main, "analyze_intent", lambda q, h: IntentResult(
+        needs_clarification=False, clarification_question=None, slots=[]
+    ))
     monkeypatch.setattr(main, "run_conversational_retrieval", fake_retrieval)
+    monkeypatch.setattr(main, "verify_evidence", lambda q, p: supported_outcome(p))
     monkeypatch.setattr(main, "astream_answer", fake_stream)
 
     with client.stream(
@@ -286,8 +345,8 @@ def test_query_stream_sources_event_includes_evidence_pack(client, monkeypatch):
         body = "".join(response.iter_text())
 
     assert "event: sources" in body
+    assert "event: verdict" in body
     assert "event: token" in body
-    assert "event: verdict" not in body
     sources_event = None
     for block in body.split("\n\n"):
         if block.startswith("event: sources"):
@@ -305,8 +364,8 @@ def test_query_stream_sources_event_includes_evidence_pack(client, monkeypatch):
     assert evidence["items"][0]["retrieval_rank"] == 1
     assert evidence["items"][0]["rerank_score"] == 0.7
     assert "rerank_score" not in evidence["items"][2]
-    assert evidence["items"][0]["stance"] == "unknown"
-    assert evidence["items"][0]["relevance"] == "uncertain"
+    assert evidence["items"][0]["stance"] == "supports"
+    assert evidence["items"][0]["relevance"] == "relevant"
 
 
 def test_conversational_query_keeps_source_details_and_adds_evidence(client, monkeypatch):
@@ -325,11 +384,15 @@ def test_conversational_query_keeps_source_details_and_adds_evidence(client, mon
     )
     details = [{"n": 1, "document": "sample.pdf", "excerpt": pack.items[0].excerpt, "page": 3}]
 
+    monkeypatch.setattr(main, "analyze_intent", lambda q, h: IntentResult(
+        needs_clarification=False, clarification_question=None, slots=[]
+    ))
     monkeypatch.setattr(
         main,
         "run_conversational_retrieval",
         lambda question, history: ("most serious supply chain risk", [], details, pack),
     )
+    monkeypatch.setattr(main, "verify_evidence", lambda q, p: supported_outcome(p))
     monkeypatch.setattr(
         main, "generate_answer", lambda question, history, passed: "Delay is the most serious risk [1]."
     )

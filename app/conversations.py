@@ -97,6 +97,26 @@ def _row_conversation(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def _expand_sources_payload(sources: Any) -> dict[str, Any]:
+    """Expose source_details as `sources` so existing clients keep working."""
+    if not sources:
+        return {}
+    if isinstance(sources, dict) and (
+        "source_details" in sources or "evidence" in sources or "verdict" in sources
+    ):
+        payload: dict[str, Any] = {
+            "sources": sources.get("source_details") or [],
+        }
+        if sources.get("evidence") is not None:
+            payload["evidence"] = sources["evidence"]
+        if sources.get("verdict") is not None:
+            payload["verdict"] = sources["verdict"]
+        return payload
+    if isinstance(sources, list):
+        return {"sources": sources}
+    return {}
+
+
 def _row_message(row: sqlite3.Row) -> dict[str, Any]:
     sources = None
     raw = row["sources_json"]
@@ -112,8 +132,7 @@ def _row_message(row: sqlite3.Row) -> dict[str, Any]:
         "content": row["content"],
         "createdAt": row["created_at"],
     }
-    if sources:
-        payload["sources"] = sources
+    payload.update(_expand_sources_payload(sources))
     return payload
 
 
@@ -214,7 +233,7 @@ def add_message(
     conversation_id: str,
     role: str,
     content: str,
-    sources: list[dict[str, Any]] | None = None,
+    sources: list[dict[str, Any]] | dict[str, Any] | None = None,
     *,
     set_title_if_default: bool = False,
 ) -> dict[str, Any]:
@@ -243,7 +262,7 @@ def add_message(
         "role": role,
         "content": content,
         "createdAt": now,
-        **({"sources": sources} if sources else {}),
+        **_expand_sources_payload(sources),
     }
 
 

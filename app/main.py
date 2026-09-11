@@ -4,7 +4,7 @@ import os
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Literal
 
@@ -48,8 +48,21 @@ from app.db_utils import vector_db_ready
 from app.external_risk import fetch_external_risk_context
 from app.ingest import delete_document, force_reindex, ingest_documents
 from app.status import DocumentStatus, list_document_statuses, set_document_status
+from app.evidence.intent import analyze_intent
 from app.evidence.pack import pack_to_json
+from app.evidence.pipeline import (
+    persistence_payload,
+    prepare_evidence_turn as _prepare_evidence_turn,
+    product_answer,
+    verdict_payload,
+    verify_evidence,
+)
 from app.evidence.types import EvidencePack
+from app.evidence.verifier import (
+    assert_generation_allowed,
+    can_explain_conflict,
+    can_generate_answer,
+)
 from app.logging_utils import get_logger
 from app.observability import configure_langsmith
 from app.query import build_qa_chain
@@ -127,12 +140,62 @@ def _source_label(metadata: dict) -> str:
     return Path(source).name if source not in {"", "Unknown"} else source
 
 
-def _unpack_retrieval(
-    result: Any,
-) -> tuple[str, list, list[dict[str, Any]], EvidencePack | None]:
-    standalone, docs, details = result[0], result[1], result[2]
-    pack = result[3] if len(result) > 3 else None
-    return standalone, docs, details, pack
+def prepare_evidence_turn(
+    question: str, history: list[dict[str, str]], *, source_limit: int
+):
+    """Use main-module callables so tests can patch intent, retrieval, and verify."""
+    return _prepare_evidence_turn(
+        question,
+        history,
+        source_limit=source_limit,
+        analyze_intent_fn=analyze_intent,
+        retrieve_fn=run_conversational_retrieval,
+        verify_fn=verify_evidence,
+    )
+
+
+def _idle_agent_extras(sources: list[str]) -> dict[str, Any]:
+    domain = detect_domain(sources, "")
+    skipped = default_agent_output(
+        "Skipped: evidence did not support generating an answer."
+    )
+    return {
+        "agents": {
+            "supplier": skipped,
+            "inventory": skipped,
+            "logistics": skipped,
+            "external_risk": skipped,
+        },
+        "agents_run": [],
+        "decision": None,
+        "domain": domain,
+    }
+
+
+def _query_payload(
+    turn,
+    answer: str,
+    extras: dict[str, Any],
+    conversation_id: str | None,
+    *,
+    include_standalone: bool = False,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "answer": answer,
+        "agents": extras["agents"],
+        "decision": extras["decision"],
+        "sources": turn.sources,
+        "source_details": turn.details,
+        "domain": extras["domain"],
+        "agents_run": extras["agents_run"],
+        "evidence": pack_to_json(turn.pack),
+        "verdict": verdict_payload(turn.verdict),
+    }
+    if include_standalone:
+        body["standalone_query"] = turn.standalone_query
+    if conversation_id:
+        body["conversation_id"] = conversation_id
+    return body
 
 
 def _evidence_payload(pack: EvidencePack | None) -> dict[str, Any] | None:
@@ -495,7 +558,7 @@ def _persist_turn(
     payload: QueryRequest,
     question: str,
     answer: str,
-    details: list[dict[str, Any]],
+    sources: list[dict[str, Any]] | dict[str, Any] | None,
 ) -> None:
     if not payload.conversation_id:
         return
@@ -516,7 +579,7 @@ def _persist_turn(
             payload.conversation_id,
             "assistant",
             answer,
-            sources=details or None,
+            sources=sources or None,
         )
         return
     if not (last and last["role"] == "user" and last["content"] == question):
@@ -532,7 +595,7 @@ def _persist_turn(
         payload.conversation_id,
         "assistant",
         answer,
-        sources=details or None,
+        sources=sources or None,
     )
 
 
@@ -603,8 +666,8 @@ async def query_rag(request: Request, payload: QueryRequest):
             )
 
         history = _resolve_history(request, payload)
-        conversational = bool(history)
-        if not conversational:
+        cacheable = not history
+        if cacheable:
             cached = _get_cached_response(question)
             if cached:
                 _cache_hits += 1
@@ -614,55 +677,51 @@ async def query_rag(request: Request, payload: QueryRequest):
                         payload,
                         question,
                         cached.get("answer") or "",
-                        cached.get("source_details") or [],
+                        {
+                            "source_details": cached.get("source_details") or [],
+                            "evidence": cached.get("evidence"),
+                            "verdict": cached.get("verdict"),
+                        },
                     )
                 return JSONResponse(content=cached, headers={"X-Cache": "HIT"})
 
         settings = get_settings()
-        pack = None
-        if conversational:
-            retrieved = await asyncio.wait_for(
-                run_in_threadpool(run_conversational_retrieval, question, history),
-                timeout=settings.query_timeout_seconds,
-            )
-            standalone, _docs, details, pack = _unpack_retrieval(retrieved)
+        turn = await asyncio.wait_for(
+            run_in_threadpool(
+                partial(
+                    prepare_evidence_turn,
+                    question,
+                    history,
+                    source_limit=settings.source_limit,
+                )
+            ),
+            timeout=settings.query_timeout_seconds,
+        )
+
+        if can_generate_answer(turn.verdict):
+            assert_generation_allowed(turn.verdict)
             answer = await asyncio.wait_for(
-                run_in_threadpool(generate_answer, question, history, details),
+                run_in_threadpool(generate_answer, question, history, turn.details),
                 timeout=settings.query_timeout_seconds,
             )
-            sources = unique_source_names(details, settings.source_limit)
-            logger.info("Conversational query standalone=%s", standalone[:120])
+            extras = await _run_agents(question, answer, turn.sources)
+        elif can_explain_conflict(turn.verdict):
+            assert_generation_allowed(turn.verdict)
+            answer = product_answer(turn.verdict)
+            extras = _idle_agent_extras(turn.sources)
         else:
-            qa = get_qa()
-            result = await asyncio.wait_for(
-                run_in_threadpool(qa.invoke, {"query": question}),
-                timeout=settings.query_timeout_seconds,
-            )
-            answer = str(result.get("result", "")).strip()
-            details = _source_details_from_result(result)
-            sources = _top_unique_sources(result, limit=settings.source_limit)
+            answer = product_answer(turn.verdict)
+            extras = _idle_agent_extras(turn.sources)
 
-        if not answer or not sources:
-            answer = answer or "No relevant document context was found for this question."
+        if not answer:
+            answer = "No relevant document context was found for this question."
 
-        extras = await _run_agents(question, answer, sources)
-        response = {
-            "answer": answer,
-            "agents": extras["agents"],
-            "decision": extras["decision"],
-            "sources": sources,
-            "source_details": details,
-            "domain": extras["domain"],
-            "agents_run": extras["agents_run"],
-        }
-        evidence = _evidence_payload(pack)
-        if evidence is not None:
-            response["evidence"] = evidence
-        if payload.conversation_id:
-            response["conversation_id"] = payload.conversation_id
-        if not conversational:
+        response = _query_payload(
+            turn, answer, extras, payload.conversation_id, include_standalone=True
+        )
+        if cacheable:
             _set_cached_response(question, response)
-        _persist_turn(request, payload, question, answer, details)
+        _persist_turn(request, payload, question, answer, persistence_payload(turn))
         return JSONResponse(content=response, headers={"X-Cache": "MISS"})
     except asyncio.TimeoutError:
         logger.warning("Query timed out for: %s", question[:80])
@@ -692,57 +751,60 @@ async def query_rag_stream(request: Request, payload: QueryRequest):
     async def events():
         answer_parts: list[str] = []
         try:
-            retrieved = await asyncio.wait_for(
-                run_in_threadpool(run_conversational_retrieval, question, history),
+            turn = await asyncio.wait_for(
+                run_in_threadpool(
+                    partial(
+                        prepare_evidence_turn,
+                        question,
+                        history,
+                        source_limit=settings.source_limit,
+                    )
+                ),
                 timeout=settings.query_timeout_seconds,
             )
-            standalone, _docs, details, pack = _unpack_retrieval(retrieved)
-            sources = unique_source_names(details, settings.source_limit)
-            sources_event: dict[str, Any] = {
-                "sources": sources,
-                "source_details": details,
-            }
-            evidence = _evidence_payload(pack)
-            if evidence is not None:
-                sources_event["evidence"] = evidence
-            yield f"event: sources\ndata: {json.dumps(sources_event)}\n\n"
+            if turn.emit_sources:
+                sources_event: dict[str, Any] = {
+                    "sources": turn.sources,
+                    "source_details": turn.details,
+                    "evidence": pack_to_json(turn.pack),
+                }
+                yield f"event: sources\ndata: {json.dumps(sources_event)}\n\n"
 
-            async for token in astream_answer(question, history, details):
-                if await request.is_disconnected():
-                    logger.info("Client disconnected during query stream")
-                    return
-                answer_parts.append(token)
-                yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
+            yield f"event: verdict\ndata: {json.dumps(verdict_payload(turn.verdict))}\n\n"
 
-            answer = "".join(answer_parts).strip()
-            if not answer:
-                answer = "No relevant document context was found for this question."
+            if can_generate_answer(turn.verdict):
+                assert_generation_allowed(turn.verdict)
+                async for token in astream_answer(question, history, turn.details):
+                    if await request.is_disconnected():
+                        logger.info("Client disconnected during query stream")
+                        return
+                    answer_parts.append(token)
+                    yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
+                answer = "".join(answer_parts).strip()
+                if not answer:
+                    answer = "No relevant document context was found for this question."
+                    yield f"event: token\ndata: {json.dumps({'content': answer})}\n\n"
+                extras = await _run_agents(question, answer, turn.sources)
+            elif can_explain_conflict(turn.verdict):
+                assert_generation_allowed(turn.verdict)
+                answer = product_answer(turn.verdict)
                 yield f"event: token\ndata: {json.dumps({'content': answer})}\n\n"
+                extras = _idle_agent_extras(turn.sources)
+            else:
+                answer = product_answer(turn.verdict)
+                extras = _idle_agent_extras(turn.sources)
 
             if await request.is_disconnected():
                 logger.info("Client disconnected after answer stream")
                 return
 
-            extras = await _run_agents(question, answer, sources)
-            response = {
-                "answer": answer,
-                "agents": extras["agents"],
-                "decision": extras["decision"],
-                "sources": sources,
-                "source_details": details,
-                "domain": extras["domain"],
-                "agents_run": extras["agents_run"],
-                "standalone_query": standalone,
-            }
-            evidence = _evidence_payload(pack)
-            if evidence is not None:
-                response["evidence"] = evidence
-            if payload.conversation_id:
-                response["conversation_id"] = payload.conversation_id
+            response = _query_payload(
+                turn, answer, extras, payload.conversation_id, include_standalone=True
+            )
             if await request.is_disconnected():
                 logger.info("Client disconnected before persisting stream")
                 return
-            _persist_turn(request, payload, question, answer, details)
+            _persist_turn(request, payload, question, answer, persistence_payload(turn))
             yield f"event: done\ndata: {json.dumps(response)}\n\n"
         except asyncio.TimeoutError:
             yield f"event: error\ndata: {json.dumps({'detail': 'Query timed out. Try a narrower question.'})}\n\n"

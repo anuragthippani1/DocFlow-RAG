@@ -1,7 +1,7 @@
 """Evidence-first architecture contracts.
 
-Phase 1 adds EvidencePack construction over existing retrieval. The live
-query path must not call verify() until Phase 2.
+Phase 3 adds deterministic structured conflict detection after verify().
+The answer generator still must not run until an evidence verdict exists.
 """
 
 from app.evidence.pack import (
@@ -9,6 +9,7 @@ from app.evidence.pack import (
     pack_to_json,
     source_details_from_pack,
 )
+from app.evidence.conflicts import apply_conflicts, detect_conflicts
 from app.evidence.types import (
     Claim,
     ClaimSupport,
@@ -70,6 +71,8 @@ __all__ = [
     "can_explain_conflict",
     "can_generate",
     "can_generate_answer",
+    "detect_conflicts",
+    "apply_conflicts",
     "generation_kind",
     "pack_to_json",
     "require_verdict",
