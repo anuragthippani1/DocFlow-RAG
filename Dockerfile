@@ -11,8 +11,8 @@ RUN apt-get update \
     && groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --create-home appuser
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.render.txt .
+RUN pip install --no-cache-dir -r requirements.render.txt
 
 COPY . .
 RUN mkdir -p data db && chown -R appuser:appuser /app
