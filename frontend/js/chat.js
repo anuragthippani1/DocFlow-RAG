@@ -440,6 +440,23 @@ const ChatWorkspace = (() => {
     closeDrawers();
   }
 
+  function parseSSEBlock(block, onEvent) {
+    let event = "message";
+    const dataLines = [];
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+    }
+    if (!dataLines.length) return;
+    let payload = {};
+    try {
+      payload = JSON.parse(dataLines.join(""));
+    } catch {
+      payload = { raw: dataLines.join("") };
+    }
+    onEvent(event, payload);
+  }
+
   async function parseSSE(response, onEvent) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -448,25 +465,26 @@ const ChatWorkspace = (() => {
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop();
+      const chunks = buffer.split(/\r?\n\r?\n/);
+      buffer = chunks.pop() || "";
       for (const block of chunks) {
-        let event = "message";
-        const dataLines = [];
-        for (const line of block.split("\n")) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-        }
-        if (!dataLines.length) continue;
-        let payload = {};
-        try {
-          payload = JSON.parse(dataLines.join(""));
-        } catch {
-          payload = { raw: dataLines.join("") };
-        }
-        onEvent(event, payload);
+        if (block.trim()) parseSSEBlock(block, onEvent);
       }
     }
+    buffer += decoder.decode();
+    if (buffer.trim()) parseSSEBlock(buffer, onEvent);
+  }
+
+  /** Attach the live answer node once; used for both streamed tokens and done-only replies. */
+  function materializePendingAnswer(pending, textEl) {
+    if (!pending) return textEl;
+    if (pending.id === "pendingBubble") pending.id = "";
+    const skeleton = pending.querySelector(".chat-skeleton");
+    if (skeleton) {
+      skeleton.replaceWith(textEl);
+      return textEl;
+    }
+    return pending.querySelector(".bubble-text") || textEl;
   }
 
   function lastUserText() {
@@ -482,11 +500,7 @@ const ChatWorkspace = (() => {
       state.messages = [...(data.messages || []), ...failed];
       $("chatTitle").textContent = data.title || "AI Chat";
       renderRail();
-      const bubbles = [...($("chatMessages")?.querySelectorAll(".bubble") || [])];
-      const persisted = data.messages || [];
-      persisted.forEach((message, index) => {
-        if (bubbles[index]) bubbles[index].dataset.id = message.id;
-      });
+      renderMessages();
     } catch {
       /* keep local messages if the refresh fails */
     }
@@ -559,10 +573,7 @@ const ChatWorkspace = (() => {
           setStatus("Writing answer…");
         }
         if (event === "token") {
-          if (pending?.id === "pendingBubble") {
-            pending.id = "";
-            pending.querySelector(".chat-skeleton")?.replaceWith(textEl);
-          }
+          materializePendingAnswer(pending, textEl);
           streamed += payload.content || "";
           textEl.innerHTML = formatMessage(streamed);
           const log = $("chatMessages");
@@ -576,16 +587,19 @@ const ChatWorkspace = (() => {
 
       if (typeof renderResult === "function") renderResult(finalPayload);
       const answer = finalPayload.answer || streamed || "No answer returned.";
+      const body = materializePendingAnswer(pending, textEl);
       if (pending) {
         pending.dataset.raw = answer;
-        const body = pending.querySelector(".bubble-text") || textEl;
         body.innerHTML = formatMessage(answer);
         pending.querySelector(".chat-skeleton")?.remove();
+        if (!pending.contains(body) && body === textEl) {
+          pending.insertBefore(textEl, pending.querySelector(".bubble-foot"));
+        }
       }
       state.messages.push({
         role: "assistant",
         content: answer,
-        sources: finalPayload.source_details || [],
+        sources: finalPayload.source_details || state.activeSources || [],
       });
       renderSources(finalPayload.source_details || []);
       const time = $("responseTime");
@@ -597,6 +611,8 @@ const ChatWorkspace = (() => {
       if (typeof addHistoryEntry === "function") {
         addHistoryEntry(text, 0, finalPayload?.decision?.final_risk, (finalPayload.sources || []).length);
       }
+      const log = $("chatMessages");
+      if (state.followScroll && log) log.scrollTop = log.scrollHeight;
       setStatus("");
       await refreshList();
       const current = state.conversations.find((item) => item.id === state.activeId);
@@ -606,8 +622,12 @@ const ChatWorkspace = (() => {
       if (error?.name === "AbortError") {
         setStatus("Generation stopped.");
         if (streamed && pending) {
+          const body = materializePendingAnswer(pending, textEl);
           pending.dataset.raw = streamed;
-          (pending.querySelector(".bubble-text") || textEl).innerHTML = formatMessage(streamed);
+          body.innerHTML = formatMessage(streamed);
+          if (!pending.contains(body) && body === textEl) {
+            pending.insertBefore(textEl, pending.querySelector(".bubble-foot"));
+          }
           state.messages.push({ role: "assistant", content: streamed, sources: state.activeSources });
         } else {
           pending?.remove();
