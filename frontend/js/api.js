@@ -11,7 +11,8 @@ function resolveApiBase() {
   if (port === "5500") return `${protocol}//${hostname}:8000`;
   if (port === "8000") return `${protocol}//${hostname}:8000`;
   if (hostname.endsWith(".onrender.com") && hostname.includes("docflow-ui")) {
-    return `${protocol}//docflow-api.onrender.com`;
+    // Render may append a random suffix to the API service hostname.
+    return `${protocol}//docflow-api-f4wf.onrender.com`;
   }
   return "http://127.0.0.1:8000";
 }
