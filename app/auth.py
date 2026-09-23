@@ -56,14 +56,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+def _allowed_api_keys(raw: str | None) -> set[str]:
+    if not raw:
+        return set()
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         settings = get_settings()
-        if not settings.api_key or not _requires_api_key(request.url.path):
+        allowed = _allowed_api_keys(settings.api_key)
+        if not allowed or not _requires_api_key(request.url.path):
             return await call_next(request)
 
-        provided = request.headers.get(API_KEY_HEADER, "")
-        if provided != settings.api_key:
+        provided = (request.headers.get(API_KEY_HEADER) or "").strip()
+        if provided not in allowed:
             logger.warning("Unauthorized request to %s", request.url.path)
             return JSONResponse(status_code=401, content={"detail": "Invalid or missing API key."})
         return await call_next(request)
